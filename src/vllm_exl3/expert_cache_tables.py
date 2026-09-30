@@ -24,7 +24,8 @@ tables only at stats reports.
 ``step_reference`` (torch, synchronizing) defines the semantics; the CPU
 device and the tests run it, and the Triton program must match it exactly.
 Adapted from qwen38-vllm experimental/expert-pool tables.py.
-Only the Triton import and unused Marlin tensor-name constants differ.
+The EXL3 decode path additionally fuses route validation and specializes
+the active planning width independently of the allocated buffer capacity.
 """
 
 from __future__ import annotations
@@ -219,7 +220,17 @@ def read_control(tables):
     return values
 
 
-def step_reference(tables, layer, ids, buffers):
+def _validate_weighted_shape(ids, weights):
+    import torch
+
+    if (ids.ndim != 2 or ids.shape[1] < 1 or ids.numel() < 1
+            or ids.dtype not in (torch.int32, torch.int64)
+            or weights.shape != ids.shape or not weights.is_floating_point()
+            or weights.device != ids.device):
+        raise ValueError("Invalid EXL3 route/weight geometry, dtype or device")
+
+
+def step_reference(tables, layer, ids, buffers, weights=None):
     """Plan and flip one layer step on the host (torch, synchronizing).
 
     Returns (gathers, step_map) with gathers as (RAM row, bank row) pairs in
@@ -241,6 +252,20 @@ def step_reference(tables, layer, ids, buffers):
     import torch
 
     E = tables.num_experts
+    if weights is not None:
+        _validate_weighted_shape(ids, weights)
+        # Strict EXL3 calls must reject the entire step before placement changes.
+        valid = (ids >= 0) & (ids < E)
+        bad_ids = ((ids != -1) & ~valid).any()
+        bad_weights = ((ids != -1) & (~torch.isfinite(weights) | (weights < 0))).any()
+        ordered = ids.sort(dim=-1).values
+        duplicates = ((ordered[:, 1:] == ordered[:, :-1])
+                      & (ordered[:, 1:] >= 0) & (ordered[:, 1:] < E)).any()
+        error = int(bad_ids) | (int(bad_weights) << 1) | (int(duplicates) << 2)
+        if error:
+            tables.error.bitwise_or_(error)
+        if int(tables.error[0]):
+            return [], buffers.step_map
     if not 0 <= layer < tables.num_layers:
         raise ValueError("Layer index outside the pool")
     hot = tables.hot_phys.tolist()
@@ -347,20 +372,29 @@ def step_reference(tables, layer, ids, buffers):
     return pairs, buffers.step_map
 
 
-def step(tables, layer, ids, buffers):
-    """Plan and flip one layer step: Triton on CUDA, the reference elsewhere."""
+def step(tables, layer, ids, buffers, weights=None):
+    """Plan a layer; weights enable strict, fused EXL3 route validation.
+
+    Invalid weighted steps only set the sticky error; callers must assert it
+    before using outputs. Unweighted calls retain the reference pool semantics.
+    """
+    if weights is not None:
+        _validate_weighted_shape(ids, weights)
     if tables.hot_phys.device.type != "cuda":
-        step_reference(tables, layer, ids, buffers)
+        step_reference(tables, layer, ids, buffers, weights)
         return
     flat = ids.reshape(-1)
     if not flat.is_contiguous():
         raise ValueError("Global step requires contiguous ids")
-    width = buffers.gather_src.shape[0]
-    if flat.numel() > width or flat.numel() > tables.staging_rows.shape[0]:
+    capacity = buffers.gather_src.shape[0]
+    if capacity < 1 or capacity & (capacity - 1):
+        raise ValueError("CUDA planner buffer capacity must be a power of two")
+    if flat.numel() > capacity or flat.numel() > tables.staging_rows.shape[0]:
         raise ValueError("Step ids exceed the plan width or the staging rows")
     rows = tables.pool_rows
     _step_kernel()[(1,)](
         flat,
+        flat if weights is None else weights.reshape(-1),
         flat.numel(),
         layer,
         tables.hot_phys,
@@ -389,7 +423,10 @@ def step(tables, layer, ids, buffers):
         tables.num_experts,
         rows,
         tables.num_layers,
-        WIDTH=width,
+        WIDTH=_next_power_of_two(flat.numel()),
+        BUFFER_WIDTH=capacity,
+        VALIDATE=weights is not None,
+        TOP_K=ids.shape[-1] if weights is not None else 1,
         BLOCK_R=_next_power_of_two(rows),
         MAP_BLOCK=1024,
         num_warps=8,
@@ -448,6 +485,7 @@ def _step_kernel():
     @triton.jit
     def global_pool_step(
         ids_ptr,
+        weights_ptr,
         n,
         layer,
         hot_phys_ptr,
@@ -477,6 +515,9 @@ def _step_kernel():
         pool_rows,
         num_layers,
         WIDTH: tl.constexpr,
+        BUFFER_WIDTH: tl.constexpr,
+        VALIDATE: tl.constexpr,
+        TOP_K: tl.constexpr,
         BLOCK_R: tl.constexpr,
         MAP_BLOCK: tl.constexpr,
     ):
@@ -486,12 +527,27 @@ def _step_kernel():
         raw = tl.load(ids_ptr + lane, mask=present, other=-1).to(tl.int64)
         valid = present & (raw >= 0) & (raw < num_experts)
         bad = present & (raw != -1) & (~valid)
-        if tl.sum(bad.to(tl.int32), 0) > 0:
-            tl.store(error_ptr, 1)
         safe = tl.where(valid, raw, 0)
         same = safe[:, None] == safe[None, :]
         earlier = lane[None, :] < lane[:, None]
         duplicate = tl.sum((same & earlier & valid[None, :]).to(tl.int32), 1) > 0
+        if VALIDATE:
+            weight = tl.load(weights_ptr + lane, mask=present, other=0)
+            bad_weight = present & (raw != -1) & ~((weight >= 0) & (weight < float("inf")))
+            same_token = (lane[:, None] // TOP_K) == (lane[None, :] // TOP_K)
+            token_duplicate = tl.sum(
+                (same & earlier & same_token & valid[:, None] & valid[None, :]).to(tl.int32), 1
+            ) > 0
+            error = ((tl.sum(bad.to(tl.int32), 0) > 0).to(tl.int32)
+                     | ((tl.sum(bad_weight.to(tl.int32), 0) > 0).to(tl.int32) << 1)
+                     | ((tl.sum(token_duplicate.to(tl.int32), 0) > 0).to(tl.int32) << 2))
+            error = error | tl.load(error_ptr)
+            if error != 0:
+                tl.store(error_ptr, error)
+                return
+        else:
+            if tl.sum(bad.to(tl.int32), 0) > 0:
+                tl.store(error_ptr, 1)
         distinct = valid & (duplicate == 0)
         # `layer` may arrive as a Python int (Triton specializes 0 and 1).
         base = tl.full((), 0, tl.int64) + layer * num_experts
@@ -599,7 +655,11 @@ def _step_kernel():
         tl.debug_barrier()
         # Routes: the physical row of every ids lane through the step map.
         route = tl.load(step_map_ptr + safe, mask=valid, other=-1)
-        tl.store(routes_ptr + lane, tl.where(valid, route, -1), mask=lane < WIDTH)
+        tl.store(routes_ptr + lane, tl.where(valid, route, -1))
+        # A smaller graph can follow a larger one with the same fixed buffers.
+        if BUFFER_WIDTH > WIDTH:
+            tail = tl.arange(0, BUFFER_WIDTH)
+            tl.store(routes_ptr + tail, -1, mask=tail >= WIDTH)
 
     _KERNELS["step"] = global_pool_step
     return global_pool_step

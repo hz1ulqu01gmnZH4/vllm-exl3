@@ -72,7 +72,7 @@ def real_layers(request):
     assert [s.bits for s in sources] == [3, 2, 3]
     refs = [_reference(e, s) for e, s in zip(experts, sources)]
     cache = Exl3ExpertCache(
-        sources, slots_per_layer=10, top_k=10, max_decode_tokens=4,
+        sources, slots_per_layer=10, top_k=10, max_decode_tokens=6,
         cache_policy=request.param,
     )
     bound = [SimpleNamespace(
@@ -137,7 +137,7 @@ def test_real_k2_k3_decode_eviction_prefill_and_graph_replay(real_layers):
 
     # Capture with promotions disabled, replay after opening the gate. Both
     # routing and input change; a captured pointer to the old expert is a bug.
-    for rows in (1, 4):
+    for rows in (1, 2, 4, 6):
         cache.set_promotions(False)
         static = _inputs(rows)
         stream = torch.cuda.Stream()
@@ -195,7 +195,7 @@ def test_cache_rejects_incompatible_dispatch_and_geometry(real_layers, monkeypat
 def test_cooperative_decode_matches_standard_experts(real_layers, monkeypatch):
     cache, refs, bound = real_layers
     assert hasattr(cache.ext, "exl3_moe_coop")
-    for rows in (1, 4):
+    for rows in (1, 2, 4, 6):
         for i in range(len(bound)):
             args = _inputs(rows, 5)
             args[1].add_(torch.arange(rows, device="cuda")[:, None]).remainder_(16)

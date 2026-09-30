@@ -352,19 +352,15 @@ class Exl3ExpertCache:
             raise ValueError("Invalid EXL3 cache input/routing shape, dtype or device")
         if not ids.is_contiguous():
             raise ValueError("Cache routing IDs must be contiguous")
-        valid = (ids >= -1) & (ids < self.num_experts)
-        finite = torch.isfinite(weights) & (weights >= 0)
-        torch._assert_async((valid & (finite | (ids == -1))).all(), "Invalid EXL3 routes")
-        sorted_ids = ids.sort(dim=-1).values
-        unique = (sorted_ids[:, 1:] != sorted_ids[:, :-1]) | (sorted_ids[:, 1:] == -1)
-        torch._assert_async(unique.all(), "EXL3 requires distinct experts within each token")
         source = self.sources[layer_index]
         if x.shape[0] <= self.max_decode_tokens:
             buffers = self.buffers[layer_index]
             bank = self.layer_banks[layer_index]
             table, index = self.layer_tables[layer_index]
-            policy.step(table, index, ids, buffers)
-            torch._assert_async((table.error == 0).all(), "EXL3 cache planner failed")
+            policy.step(table, index, ids, buffers, weights)
+            torch._assert_async(
+                (table.error == 0).all(), "Invalid EXL3 routes or cache planner failure"
+            )
             _copy_misses[(32,)](
                 self.host_views[layer_index], bank,
                 buffers.gather_src, buffers.gather_dst, buffers.gather_count,
@@ -380,6 +376,12 @@ class Exl3ExpertCache:
         else:
             if torch.cuda.is_current_stream_capturing():
                 raise RuntimeError("Shared EXL3 prefill staging is eager-only")
+            valid = (ids >= -1) & (ids < self.num_experts)
+            finite = torch.isfinite(weights) & (weights >= 0)
+            torch._assert_async((valid & (finite | (ids == -1))).all(), "Invalid EXL3 routes")
+            sorted_ids = ids.sort(dim=-1).values
+            unique = (sorted_ids[:, 1:] != sorted_ids[:, :-1]) | (sorted_ids[:, 1:] == -1)
+            torch._assert_async(unique.all(), "EXL3 requires distinct experts within each token")
             self.prefill_bank[:, :source.data.shape[1]].copy_(source.data, non_blocking=True)
             state = self.prefill_states[layer_index]
         out = apply_exl3_fused_moe(

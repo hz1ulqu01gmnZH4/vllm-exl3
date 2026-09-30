@@ -1,0 +1,147 @@
+{
+  "date": "2026-10-01",
+  "checkpoint": "Qwen3.8-Flash-Next-EXL3-2.50bpw",
+  "gpu": "RTX 5090 32 GiB",
+  "platform": "WSL2",
+  "plugin_base_commit": "45436f1af418315c012ddd63f069d6eda9a7ecba",
+  "vllm_base_commit": "e378275a8f20eac9e92212e4a1fee84ec5a31dc7",
+  "model_config_sha256": "ebec75e452211b261ed5d502799b812c7787022ac7c1ccdc6f7cb7c39982f6ea",
+  "change": [
+    "Fuse decode route validation into the cache planner",
+    "Size active planning width to actual routes while preserving fixed buffer capacity"
+  ],
+  "decision": "CONFIRMED; applied to working tree after all preregistered gates passed",
+  "method": {
+    "seed": 42,
+    "temperature": 0,
+    "warmup_tokens_per_prompt": 32,
+    "output_tokens_per_prompt": 128,
+    "starts_per_variant": 2,
+    "full_model_gpu_profiling": false
+  },
+  "full_model": {
+    "order": [
+      "baseline1",
+      "candidate1",
+      "baseline2",
+      "candidate2"
+    ],
+    "metric": "127 / (last_token_ts-first_token_ts); arithmetic mean of two rates per prompt, then geometric mean of per-prompt speedup ratios",
+    "configuration": "FP8 e4m3 KV8GiB,precisionLRU160,coop,noMTP,maxseq4,graphs1/2/4,context131072",
+    "prompts": {
+      "code": {
+        "rates": {
+          "baseline": [
+            57.9090434236672,
+            59.97145435270349
+          ],
+          "candidate": [
+            69.06038719973756,
+            69.28452426051393
+          ]
+        },
+        "mean_tok_s": {
+          "baseline": 58.940248888185344,
+          "candidate": 69.17245573012575
+        },
+        "speedup": 1.1736030477467405,
+        "paired_token_identity": [
+          true,
+          false
+        ],
+        "prompt_tokens": 34
+      },
+      "story": {
+        "rates": {
+          "baseline": [
+            63.72789413582393,
+            66.8758292303336
+          ],
+          "candidate": [
+            76.58174281832565,
+            77.27013985142962
+          ]
+        },
+        "mean_tok_s": {
+          "baseline": 65.30186168307876,
+          "candidate": 76.92594133487763
+        },
+        "speedup": 1.178005333266187,
+        "paired_token_identity": [
+          false,
+          false
+        ],
+        "prompt_tokens": 38
+      },
+      "long8k": {
+        "rates": {
+          "baseline": [
+            62.12139051603026,
+            65.28467156136344
+          ],
+          "candidate": [
+            73.78635253073078,
+            74.76248599861255
+          ]
+        },
+        "mean_tok_s": {
+          "baseline": 63.70303103869685,
+          "candidate": 74.27441926467166
+        },
+        "speedup": 1.1659479628144092,
+        "paired_token_identity": [
+          false,
+          true
+        ],
+        "prompt_tokens": 8234
+      }
+    },
+    "geomean_speedup": 1.172508188568363,
+    "worst_prompt_speedup": 1.1659479628144092,
+    "gate_pass": true,
+    "limitations": [
+      "Two starts per variant; small benchmark, not a confidence estimate.",
+      "Full-token equality is recorded rather than assumed; exact planner-state parity and checkpoint arithmetic tests are separate correctness evidence.",
+      "Batch1/noMTP/short and8K context;131K, concurrent serving and MTP throughput untested.",
+      "Model request timestamps exclude prefill for the decode metric; no GPU profiler or phase markers were installed."
+    ]
+  },
+  "microbenchmark": {
+    "cases": 24,
+    "geomean_latency_ratio": 0.36754399185926456,
+    "worst_latency_ratio": 0.6666666822135852,
+    "gate_pass": true
+  },
+  "verification": {
+    "planner_cuda_tests_passed": 19,
+    "real_checkpoint_cuda_tests_passed": 6,
+    "real_checkpoint_tolerance": {
+      "rtol": 0.02,
+      "atol": 0.02
+    },
+    "lint": "passed",
+    "scope": [
+      "Exact reference/GPU cache metadata and route parity",
+      "Changing graph replay and eviction at 1/2/4/6 tokens",
+      "Invalid routes reject before cache metadata mutation",
+      "K2/K3 packed experts, cooperative arithmetic, and eager prefill"
+    ]
+  },
+  "corrections": [
+    "Lint import ordering and explicit subprocess check=False fixed after initial lint failure.",
+    "A host-side power-of-two buffer capacity guard was added after candidate1, with two passing targeted tests. All model runs use capacity64 and the GPU kernel was unchanged."
+  ],
+  "experiment_directory_relative_to_repo": "../experiments/2026-10-01_exl3-fused-decode-planner-optimization",
+  "within_variant_token_identity": {
+    "baseline": {
+      "code": false,
+      "story": false,
+      "long8k": false
+    },
+    "candidate": {
+      "code": true,
+      "story": true,
+      "long8k": false
+    }
+  }
+}

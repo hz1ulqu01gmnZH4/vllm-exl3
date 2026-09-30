@@ -10,6 +10,9 @@ The matched RTX 5090 short-prompt benchmark improved from 8.56 to 65.14 decode
 tokens/s with fused pointer updates, decode graphs, cooperative EXL3 and MTP3.
 That profile uses 96 cache rows and one active request; see the linked guide
 for qualification limits.
+A later matched run improved from 62.42 to 68.74 tokens/s with compact K2/K3
+LRU banks and 160 initial slots per layer, using 3.09 GiB more expert-cache VRAM.
+The tested frequency-admission alternative was slower and was removed.
 The [launch script](scripts/serve-exl3.sh) uses a 2K context by default; follow the
 linked setup guide for the pinned vLLM patch, extension build, and model overlay.
 

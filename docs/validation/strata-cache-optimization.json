@@ -1,0 +1,111 @@
+{
+  "date": "2026-09-30",
+  "baseline_commit": "bdc3ef0",
+  "checkpoint": "Qwen3.8-Flash-Next-EXL3-2.50bpw",
+  "gpu": "RTX5090 32GiB",
+  "platform": "WSL2",
+  "pcie_observed_previously": "5.0 x8",
+  "method": {
+    "prompt_tokens": [
+      34,
+      39
+    ],
+    "output_tokens": 128,
+    "warmup_tokens": 16,
+    "seed": 42,
+    "temperature": 0,
+    "decode_rate": "127 / (last_token_ts - first_token_ts)",
+    "aggregation": "geometric mean of two requests",
+    "repeats": 1,
+    "max_model_len": 131072,
+    "kv_cache_memory_bytes": 4831838208,
+    "mtp_tokens": 3,
+    "max_num_seqs": 1,
+    "prefill_tokens": 2048,
+    "graphs": "FULL_DECODE_ONLY capture[4]",
+    "coop": true
+  },
+  "runs": [
+    {
+      "label": "baseline96",
+      "decode_tok_s": [
+        72.82917301230864,
+        53.49564150220225
+      ],
+      "geometric_mean_tok_s": 62.41829323498301,
+      "bank_bytes": 8656435200,
+      "answers_passed": true,
+      "tokens_identical_to_baseline": [
+        true,
+        true
+      ]
+    },
+    {
+      "label": "lfu96",
+      "decode_tok_s": [
+        57.00106056083229,
+        42.77328602234469
+      ],
+      "geometric_mean_tok_s": 49.377349735941394,
+      "bank_bytes": 7231795200,
+      "answers_passed": true,
+      "tokens_identical_to_baseline": [
+        true,
+        true
+      ]
+    },
+    {
+      "label": "precision115",
+      "decode_tok_s": [
+        68.14337041911214,
+        58.095891980518196
+      ],
+      "geometric_mean_tok_s": 62.919391979398355,
+      "bank_bytes": 8638464000,
+      "answers_passed": true,
+      "tokens_identical_to_baseline": [
+        false,
+        false
+      ]
+    },
+    {
+      "label": "precision160",
+      "decode_tok_s": [
+        76.15583803678294,
+        62.05149569787725
+      ],
+      "geometric_mean_tok_s": 68.74288076817608,
+      "bank_bytes": 11970048000,
+      "answers_passed": true,
+      "tokens_identical_to_baseline": [
+        true,
+        false
+      ]
+    }
+  ],
+  "selected": "precision160",
+  "gain_over_matched_baseline": 1.1013258646689235,
+  "criterion_passed": true,
+  "validation": {
+    "cpu_loader_tests": 4,
+    "final_gpu_tests": 6,
+    "gpu_scope": "three real layers K3/K2/K3, both retained policies, packed bytes, cross-layer eviction, prefill, changed-routing graphs and cooperative arithmetic",
+    "ruff": "passed"
+  },
+  "long_smoke": {
+    "prompt_tokens": 8234,
+    "output_tokens": 128,
+    "text": "CHECKPASS\n\nThe provided text is a repetitive block of background information regarding sequential access and memory efficiency. To address the core concepts of computer architecture implied by this context, we must delve into the intricate relationship between CPU caches, data locality, and memory bandwidth. These three elements are fundamental to modern computing performance, as they determine how efficiently a processor can retrieve and process data.\n\nCPU caches are small, high-speed memory units located directly on or very near the processor chip. They serve as a buffer between the extremely fast CPU core and the much slower main memory (RAM). The primary purpose of a cache is to store frequently accessed data and instructions",
+    "wall_seconds": 14.097261492999678,
+    "decode_tok_s": 55.795479166913175,
+    "scope": "Offline 8K smoke, same token IDs as previous HTTP smoke; not matched performance"
+  },
+  "limitations": [
+    "Two short prompts, one run per configuration; gain only just exceeds 10% criterion and is not a robust confidence estimate",
+    "Precision-pool outputs are not bit-identical to baseline; sanity checks are not broad quality equivalence",
+    "131K configured, full-context and 32K-output generation untested",
+    "8K smoke is offline and has no matched baseline; previous HTTP rate is not directly comparable",
+    "Capacity and layout changed together; no claim that layout alone gives the measured gain",
+    "No CPU hybrid, transfer overlap, adaptive speculation or new GPU phase profiling in this bounded pass"
+  ]
+}

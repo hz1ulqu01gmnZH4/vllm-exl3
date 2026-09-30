@@ -245,4 +245,54 @@ comparison diverged after 50 and 73 tokens. These are performance and parity
 checks, not a model-quality evaluation. CUPTI could not initialize under WSL,
 so the saved profiler trace contains CPU events only.</p>
 </section>
+<section>
+<h2>Compact precision pools · 30 September 2026</h2>
+<p>A follow-up experiment compared the selected MTP3 profile against compact
+expert banks. <code>precision-lru</code> keeps separate K2 and K3 banks, with one
+shared staging area per precision. LRU still moves experts between layers within
+each bank. K2 weights no longer occupy K3-sized rows; graph addresses and the
+packed expert arithmetic remain unchanged. The original <code>global-lru</code>
+policy remains the plugin and portable launcher's default.</p>
+<table>
+<tr><th>Configuration</th><th>Code / explanation tokens/s</th><th>Geometric mean</th><th>Expert banks</th><th>Decision</th></tr>
+<tr><td>Matched baseline: global LRU, 96 slots</td><td>72.83 / 53.50</td><td>62.42</td><td>8.06 GiB</td><td>Reference</td></tr>
+<tr><td>Compact per-layer frequency policy, 96 slots</td><td>57.00 / 42.77</td><td>49.38</td><td>6.74 GiB</td><td>Rejected; implementation removed</td></tr>
+<tr><td>Compact precision LRU, 115 slots</td><td>68.14 / 58.10</td><td>62.92</td><td>8.05 GiB</td><td>Below acceptance threshold</td></tr>
+<tr><td>Compact precision LRU, 160 slots</td><td>76.16 / 62.05</td><td>68.74</td><td>11.15 GiB</td><td>Selected: +10.1%</td></tr>
+</table>
+<p>The selected profile uses 3.09 GiB more expert-cache memory than the matched
+baseline. Same-budget packing alone did not deliver the speed gain. All runs use
+the same two short prompts, 128 output tokens each, MTP3, cooperative kernels,
+decode graph size 4, one sequence, 131,072 configured context and 4.5 GiB KV.
+There is one measurement per prompt and configuration; the result only just
+exceeds the pre-registered 10% threshold and has no confidence interval.
+The earlier 65.14 result above belongs to a separate run.</p>
+<p>Use the existing MTP launch arguments above with these environment settings:</p>
+<pre>EXL3_CACHE_POLICY=precision-lru EXL3_CACHE_ROWS=160 \
+VLLM_EXL3_COOP=1 EXL3_DECODE_GRAPHS=1 \
+scripts/serve-exl3.sh MODEL_OVERLAY \
+  --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4]}' \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
+  --max-model-len 131072 --max-num-seqs 1 --max-num-batched-tokens 2048 \
+  --kv-cache-memory-bytes 4831838208</pre>
+<p>For a direct vLLM launch, set <code>VLLM_EXL3_EXPERT_CACHE_POLICY=precision-lru</code>
+and <code>VLLM_EXL3_EXPERT_CACHE_ROWS=160</code>. This capacity was tested on a
+32 GiB RTX 5090; it is not a default for smaller GPUs.</p>
+<p>Four CPU loader tests and six final GPU tests passed. GPU coverage uses three
+distinct real layers (K3/K2/K3), including cross-layer eviction within a precision
+pool, packed bytes, eager prefill, changing-route CUDA graph replay and cooperative
+kernel parity. Both simple full-model answer checks passed for every configuration.</p>
+<p>The selected profile passed an <strong>offline</strong> smoke test with 8,234
+input tokens and 128 output tokens: 55.80 decode tokens/s, 14.10 seconds total,
+and the requested CHECKPASS prefix. It has no matched long-prompt baseline and
+is not directly comparable to the earlier HTTP timing. Full 131K input and 32K
+output remain untested. Precision-pool outputs differ from the baseline token
+sequences; these checks do not establish broad model-quality equivalence.</p>
+<p>The exploration was informed by
+<a href="https://github.com/Niko1221/Strata/blob/d6708a4aae15b4860000d54c8af9e84d684bce09/src/program/generate.cpp#L3406">Strata's adaptive expert residency</a>.
+The independently implemented frequency policy was slower here. CPU expert
+execution, transfer overlap and adaptive drafting were not attempted in this pass:
+the experiment stopped at its first qualifying result.
+<a href="validation/strata-cache-optimization.json">Results and qualification limits</a>.</p>
+</section>
 </html>
