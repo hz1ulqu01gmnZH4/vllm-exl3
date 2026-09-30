@@ -2311,6 +2311,12 @@ def apply_exl3_experts(
     fused: bool | None = None,
 ) -> torch.Tensor:
     """Shipped routed-expert apply. `fused=None` honors EXL3_FUSED_MOE."""
+    cache_binding = getattr(layer, "_exl3_expert_cache", None)
+    if cache_binding is not None:
+        if fused is False:
+            raise ValueError("EXL3 expert cache requires fused execution")
+        cache, layer_index = cache_binding
+        return cache.apply(layer_index, x, topk_ids, topk_weights, limit=limit)
     if getattr(layer, "_exl3_mixed_store", None) is not None:
         # Mixed-K with the fused mixedk kernel available — route through the
         # standard fused path which will dispatch to exl3_moe_mixedk.

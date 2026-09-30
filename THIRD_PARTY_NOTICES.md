@@ -105,6 +105,12 @@ SOFTWARE.
 
 Author: the vLLM project ([vllm-project/vllm](https://github.com/vllm-project/vllm)).
 
+`src/vllm_exl3/expert_cache_tables.py` adapts the device-side global LRU
+planner from the local `qwen38-vllm/experimental/expert-pool` implementation
+(`vllm/model_executor/layers/fused_moe/expert_pool/tables.py`). Its Apache-2.0
+SPDX and vLLM contributor notice are retained. The EXL3 packed-row storage,
+pointer remapping and consumer adapter are in `expert_cache.py`.
+
 `_exl3_routed_experts_loader` in `src/vllm_exl3/exl3.py` mirrors the checkpoint-name resolution of
 vLLM's `RoutedExperts.load_weights`, adapted to load one EXL3 tensor per expert instead of taking
 vLLM's fused (3-D) branch. This plugin's custom ops are also registered through vLLM's
