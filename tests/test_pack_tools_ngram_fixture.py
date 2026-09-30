@@ -56,7 +56,8 @@ def _aux() -> dict[str, tuple[str, tuple[int, ...]]]:
     }
 
 
-def _pack(tmp_path, *, unsharded: bool, config: dict | None = None) -> str:
+def _pack(tmp_path, *, unsharded: bool, config: dict | None = None,
+          extra_tensors: dict | None = None) -> str:
     """A pack with one n-gram table, three MoE layers and two dense linears."""
     pack = str(tmp_path / "pack")
     os.makedirs(pack, exist_ok=True)
@@ -77,6 +78,7 @@ def _pack(tmp_path, *, unsharded: bool, config: dict | None = None) -> str:
     tensors["model.language_model.layers.0.self_attn.q_proj.trellis"] = ("I16", (160, 32))
     tensors["model.language_model.layers.0.self_attn.o_proj.trellis"] = ("I16", (160, 32))
     tensors["mtp.layers.0.self_attn.q_proj.trellis"] = ("I16", (160, 32))
+    tensors.update(extra_tensors or {})
     _write_pack(pack, tensors)
     cfg = {
         "text_config": {
@@ -163,6 +165,64 @@ def test_config_tool_keeps_sharded_tables_sharded(tmp_path):
     q = json.load(open(os.path.join(pack, "config.json")))["text_config"]["quantization_config"]
     assert q["ngram_embedding"]["sharded"] is True
     assert q["ngram_embedding"]["num_shards"] == 2
+
+
+def test_mtp_experts_do_not_change_decoder_layer_zero_precision(tmp_path):
+    extra = {}
+    for root, bits in (("model.language_model.layers.0", 3), ("mtp.layers.0", 4)):
+        for projection in ("gate_proj", "up_proj", "down_proj"):
+            extra[f"{root}.mlp.experts.0.{projection}.trellis"] = (
+                "I16", (8, 8, bits * 16)
+            )
+    pack = _pack(tmp_path, unsharded=True, extra_tensors=extra)
+    scan = _scan(pack)
+    assert scan["expert_k_per_layer"]["0"]["gate_proj"] == [3]
+    assert scan["expert_k_per_layer"]["6"]["gate_proj"] == [4]
+    assert scan["expert_k_nonuniform"] == []
+    result = _run(_CONFIG, pack)
+    assert result.returncode == 0, result.stderr
+    q = json.load(open(os.path.join(pack, "config.json")))["quantization_config"]
+    assert q["bits"] == 3
+    assert q["layer_bits"]["6"] == 4
+
+
+def test_output_head_keeps_its_precision_under_conditional_model_prefix(tmp_path):
+    pack = _pack(tmp_path, unsharded=True, extra_tensors={
+        "lm_head.trellis": ("I16", (8, 8, 96)),
+    })
+    _scan(pack)
+    result = _run(_CONFIG, pack)
+    assert result.returncode == 0, result.stderr
+    q = json.load(open(os.path.join(pack, "config.json")))["quantization_config"]
+    assert q["non_routed_exl3"]["layers"]["language_model.lm_head"]["bits"] == 6
+
+
+def test_overlay_preserves_source_and_rebuilds_index(tmp_path):
+    from pathlib import Path
+
+    source = Path(_pack(tmp_path, unsharded=True))
+    before = {p.name: p.read_bytes() for p in source.iterdir()}
+    destination = tmp_path / "overlay"
+    tool = os.path.join(_TOOLS, "prepare_qwen_overlay.py")
+    result = _run(tool, str(source), str(destination))
+    assert result.returncode == 0, result.stderr
+    assert {p.name: p.read_bytes() for p in source.iterdir()} == before
+    assert (destination / "ngram_embedding.safetensors").resolve() == source / "ngram_embedding.safetensors"
+    assert not (destination / "config.json").is_symlink()
+    q = json.loads((destination / "config.json").read_text())["quantization_config"]
+    assert q["bits"] == 3 and q["ngram_embedding"]["sharded"] is False
+    index = json.loads((destination / "model.safetensors.index.json").read_text())
+    assert index["weight_map"][f"{TABLE}.trellis"] == "ngram_embedding.safetensors"
+    result = _run(tool, str(source), str(destination))
+    assert result.returncode != 0  # Existing overlays must never be overwritten.
+
+
+def test_overlay_refuses_destination_inside_source(tmp_path):
+    pack = _pack(tmp_path, unsharded=True)
+    result = _run(os.path.join(_TOOLS, "prepare_qwen_overlay.py"), pack,
+                  os.path.join(pack, "overlay"))
+    assert result.returncode != 0 and "outside" in result.stderr
+    assert not os.path.exists(os.path.join(pack, "overlay"))
 
 
 @pytest.mark.parametrize(

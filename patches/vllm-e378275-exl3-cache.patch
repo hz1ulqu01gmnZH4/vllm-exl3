@@ -1,0 +1,61 @@
+diff --git a/vllm/model_executor/model_loader/utils.py b/vllm/model_executor/model_loader/utils.py
+index d80b7d1..e694176 100644
+--- a/vllm/model_executor/model_loader/utils.py
++++ b/vllm/model_executor/model_loader/utils.py
+@@ -153,6 +153,17 @@ def process_weights_after_loading(
+             with device_loading_context(module, target_device):
+                 module.process_weights_after_loading(model_config.dtype)
+ 
++    if model_config.quantization == "exl3":
++        from vllm_exl3.expert_cache_loader import cache_rows, install_expert_cache
++
++        if cache_rows():
++            scheduler = get_current_vllm_config().scheduler_config
++            install_expert_cache(
++                model,
++                target_device,
++                scheduler.max_num_seqs if scheduler is not None else 1,
++            )
++
+     # Model-level post-load hook, after the per-layer quant finalize.
+     if hasattr(model, "process_weights_after_loading"):
+         model.process_weights_after_loading()
+diff --git a/vllm/models/qwen4_exp/nvidia/model.py b/vllm/models/qwen4_exp/nvidia/model.py
+index 2e38339..453042e 100644
+--- a/vllm/models/qwen4_exp/nvidia/model.py
++++ b/vllm/models/qwen4_exp/nvidia/model.py
+@@ -678,6 +678,12 @@ class Qwen4ExpForCausalLM(
+         self.lm_head = ParallelLMHead(
+             config.vocab_size,
+             config.hidden_size,
++            quant_config=(
++                self.quant_config
++                if self.quant_config is not None
++                and self.quant_config.get_name() == "exl3"
++                else None
++            ),
+             prefix=maybe_prefix(prefix, "lm_head"),
+         )
+         self.logits_processor = LogitsProcessor(config.vocab_size)
+diff --git a/vllm/models/qwen4_exp/nvidia/ngram_embedding.py b/vllm/models/qwen4_exp/nvidia/ngram_embedding.py
+index c26fd87..b32c57e 100644
+--- a/vllm/models/qwen4_exp/nvidia/ngram_embedding.py
++++ b/vllm/models/qwen4_exp/nvidia/ngram_embedding.py
+@@ -692,6 +692,17 @@ class Qwen4ExpNGramEmbedding(nn.Module):
+         divisor = int(config.make_ngram_vocab_size_divisible_by)
+         padded_vocab_size = ((total_vocab_size + divisor - 1) // divisor) * divisor
+         embedding_prefix = f"{prefix}.ngram_embedding"
++        if quant_config is not None and quant_config.get_name() == "exl3":
++            from vllm_exl3.qwen_ple import Exl3QwenPLEEmbedding
++
++            self.ngram_embedding = Exl3QwenPLEEmbedding(
++                padded_vocab_size,
++                self.head_dim,
++                quant_config=quant_config,
++                prefix=embedding_prefix,
++                params_dtype=params_dtype or torch.get_default_dtype(),
++            )
++            return
+         embedding_quant_method = Qwen4ExpPLEEmbeddingMethod.from_quant_config(
+             quant_config,
+             embedding_prefix,

@@ -2863,6 +2863,11 @@ class Exl3MoEMethod(FusedMoEMethodBase):
         self.bits = int(bits) if bits is not None else quant_config.bits
         self._logged = False
 
+    @property
+    def requires_device_loading(self):
+        from .expert_cache_loader import cache_rows
+        return cache_rows() == 0
+
     def get_fused_moe_quant_config(self, layer: "RoutedExperts") -> FusedMoEQuantConfig | None:
         return None
 
@@ -2876,6 +2881,13 @@ class Exl3MoEMethod(FusedMoEMethodBase):
         **extra_weight_attrs,
     ) -> None:
         del params_dtype
+        from .expert_cache_loader import cache_rows, create_cached_weights
+        if cache_rows():
+            create_cached_weights(
+                self, layer, num_experts, hidden_size,
+                intermediate_size_per_partition,
+            )
+            return
         from .tensor_mixed_k import create_mixed_weights, tensor_mixed_k_enabled
 
         # Hadamard-aligned uneven TP (VLLM_EXL3_MOE_TP_ALIGN): vLLM hands every
@@ -3307,6 +3319,10 @@ class Exl3MoEMethod(FusedMoEMethodBase):
         return True if return_success else None
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        if hasattr(layer, "_exl3_host_source"):
+            from .expert_cache_loader import finalize_cached_weights
+            finalize_cached_weights(layer)
+            return
         store = getattr(layer, "_exl3_mixed_store", None)
         if store is not None:
             layer._exl3_inners = store.build_inners(make_linear_exl3)
@@ -3729,10 +3745,14 @@ class Exl3EmbeddingMethod(QuantizeMethodBase):
         # the host, so the table costs page cache, not device memory. See
         # ``_embedding_impl_disk`` for what that requires of the CUDA graph mode.
         table_mode = os.environ.get(NGRAM_TABLE_ENV, "resident").strip().lower()
-        if table_mode not in ("resident", "disk"):
-            raise ValueError(f"{NGRAM_TABLE_ENV} must be 'resident' or 'disk', got {table_mode!r}")
+        if table_mode not in ("resident", "disk", "pinned"):
+            raise ValueError(f"{NGRAM_TABLE_ENV} must be resident, disk or pinned, got {table_mode!r}")
         self.table_mode = table_mode
         self._ext = None
+
+    @property
+    def requires_device_loading(self):
+        return self.table_mode != "pinned"
 
     def create_weights(
         self,
@@ -3762,9 +3782,11 @@ class Exl3EmbeddingMethod(QuantizeMethodBase):
         if int(tp_size) != 1:
             raise RuntimeError("EXL3 n-gram embedding supports tensor parallel size 1 only")
 
-        if self.table_mode == "resident":
+        if self.table_mode in ("resident", "pinned"):
+            storage = {"device": "cpu", "pin_memory": True} if self.table_mode == "pinned" else {}
             table = torch.empty(
-                self.num_shards, self.rows_per_shard, self.words, dtype=torch.int16
+                self.num_shards, self.rows_per_shard, self.words, dtype=torch.int16,
+                **storage,
             )
         else:
             # Nothing resident: the loader keeps the checkpoint views (``_exl3_ngram_views``)
@@ -3885,6 +3907,11 @@ class Exl3EmbeddingMethod(QuantizeMethodBase):
             )
         if table is not None:
             layer._exl3_ngram_rows = table.view(-1, self.words)
+            if self.table_mode == "pinned":
+                ext = load_exllamav3_ext()
+                layer._exl3_ngram_rows = ext.pinned_cuda_view(
+                    layer._exl3_ngram_rows, torch.cuda.current_device()
+                )
         else:
             views = layer._exl3_ngram_views
             if any(v is None for v in views):

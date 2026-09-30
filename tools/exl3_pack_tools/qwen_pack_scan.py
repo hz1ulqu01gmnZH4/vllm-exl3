@@ -50,6 +50,15 @@ def main():
     expert_re = re.compile(r"\.experts\.(\d+)\.(\w+)\.(\w+)$")
     ngram_re = re.compile(r"^(.*)\.shard_(\d+)\.trellis$")
     tensors = list(headers(args.pack))
+    # Header-only inventories need no config unless MTP experts must be
+    # numbered after the main decoder stack.
+    if any(name.startswith("mtp.") and expert_re.search(name)
+           for _, name, _, _ in tensors):
+        with open(os.path.join(args.pack, "config.json")) as config_file:
+            config = json.load(config_file)
+        main_layers = int(config.get("text_config", config)["num_hidden_layers"])
+        if main_layers < 1:
+            raise ValueError("MTP expert numbering requires num_hidden_layers > 0")
 
     # n-gram tables first: roots are discovered from shard trellis names, then every
     # tensor directly under a root that is not a shard is an aux tensor of that table.
@@ -121,6 +130,8 @@ def main():
         lm = layer_re.search(name)
         if m and lm:
             layer, proj, suffix = int(lm.group(1)), m.group(2), m.group(3)
+            if name.startswith("mtp."):
+                layer += main_layers
             families[f"layers.N.experts.E.{proj}"].add(suffix)
             if k is not None:
                 expert_k[layer][proj].add(k)

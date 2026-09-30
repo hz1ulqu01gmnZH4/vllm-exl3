@@ -109,6 +109,8 @@ def main():
     suffixes = set()
     for prefix, k in scan["dense_k_by_prefix"].items():
         variants = {prefix}
+        if prefix == "lm_head":
+            variants.add("language_model.lm_head")
         head, _, leaf = prefix.rpartition(".")
         if leaf in fused:
             variants.add(f"{head}.{fused[leaf]}")
