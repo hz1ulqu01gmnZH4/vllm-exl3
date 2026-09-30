@@ -88,3 +88,27 @@ def test_host_loader_rejects_simultaneous_nvfp4_pool(host_layer):
     config.offload_config.moe_expert_pool_rows = 2
     with pytest.raises(ValueError, match="NVFP4 pool"):
         create_cached_weights(method, layer, 4, 128, 128)
+
+
+def test_host_loader_only_allows_decode_graphs(host_layer):
+    from vllm.config import CompilationMode, CUDAGraphMode
+
+    layer, method, config = host_layer
+    config.model_config.enforce_eager = False
+    config.scheduler_config = SimpleNamespace(max_num_seqs=4)
+    config.compilation_config = SimpleNamespace(
+        mode=CompilationMode.NONE, cudagraph_mode=CUDAGraphMode.FULL,
+        cudagraph_capture_sizes=[1, 4],
+    )
+    with pytest.raises(ValueError, match="FULL_DECODE_ONLY"):
+        create_cached_weights(method, layer, 4, 128, 128)
+    config.compilation_config.cudagraph_mode = CUDAGraphMode.FULL_DECODE_ONLY
+    config.compilation_config.cudagraph_capture_sizes = [8]
+    with pytest.raises(ValueError, match="max_num_seqs"):
+        create_cached_weights(method, layer, 4, 128, 128)
+    config.compilation_config.cudagraph_capture_sizes = [1, 4]
+    create_cached_weights(method, torch.nn.Module(), 4, 128, 128)
+    config.scheduler_config.max_num_seqs = 1
+    config.speculative_config = SimpleNamespace(num_speculative_tokens=3)
+    config.compilation_config.cudagraph_capture_sizes = [4]
+    create_cached_weights(method, torch.nn.Module(), 4, 128, 128)

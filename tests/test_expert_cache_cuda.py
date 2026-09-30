@@ -131,27 +131,31 @@ def test_real_k2_k3_decode_eviction_prefill_and_graph_replay(real_layers):
 
     # Capture with promotions disabled, replay after opening the gate. Both
     # routing and input change; a captured pointer to the old expert is a bug.
-    cache.set_promotions(False)
-    static = _inputs(1)
-    stream = torch.cuda.Stream()
-    stream.wait_stream(torch.cuda.current_stream())
-    with torch.cuda.stream(stream):
-        for _ in range(2):
-            for layer in bound:
-                _apply(layer, static)
-    torch.cuda.current_stream().wait_stream(stream)
-    graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
-        output = [_apply(layer, static) for layer in bound]
-    cache.set_promotions(True)
-    for start in (6, 0, 3, 6):
-        fresh = _inputs(1, start)
-        expected = [_apply(layer, fresh) for layer in refs]
-        for dest, src in zip(static, fresh):
-            dest.copy_(src)
-        graph.replay()
-        for got, want in zip(output, expected):
-            _close(got, want)
+    for rows in (1, 4):
+        cache.set_promotions(False)
+        static = _inputs(rows)
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            for _ in range(2):
+                for layer in bound:
+                    _apply(layer, static)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            output = [_apply(layer, static) for layer in bound]
+        cache.set_promotions(True)
+        for start in (6, 0, 3, 6):
+            fresh = _inputs(rows, start)
+            # Different token routes exercise the union of experts in a
+            # verification batch, rather than repeating one token's route.
+            fresh[1].add_(torch.arange(rows, device="cuda")[:, None]).remainder_(16)
+            expected = [_apply(layer, fresh) for layer in refs]
+            for dest, src in zip(static, fresh):
+                dest.copy_(src)
+            graph.replay()
+            for got, want in zip(output, expected):
+                _close(got, want)
     snapshot = cache.snapshot()
     # Verify every occupied slot against the immutable packed source, including
     # slots that changed from a K3 layer to K2 or in the opposite direction.
@@ -177,3 +181,16 @@ def test_cache_rejects_incompatible_dispatch_and_geometry(real_layers, monkeypat
         cache.apply(0, args[0][:, :128], args[1], args[2])
     with pytest.raises(ValueError, match="already has"):
         cache.attach(bound)
+
+
+def test_cooperative_decode_matches_standard_experts(real_layers, monkeypatch):
+    cache, refs, bound = real_layers
+    assert hasattr(cache.ext, "exl3_moe_coop")
+    for rows in (1, 4):
+        for i in range(2):
+            args = _inputs(rows, 5)
+            args[1].add_(torch.arange(rows, device="cuda")[:, None]).remainder_(16)
+            monkeypatch.setattr(exl3, "_COOP", False)
+            expected = _apply(refs[i], args)
+            monkeypatch.setattr(exl3, "_COOP", True)
+            _close(_apply(bound[i], args), expected)

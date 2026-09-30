@@ -1,0 +1,147 @@
+{
+  "date": "2026-09-30",
+  "checkpoint": "Qwen3.8-Flash-Next-EXL3-2.50bpw",
+  "gpu": "RTX 5090 32 GiB",
+  "pcie_observed": "5.0 x8",
+  "platform": "WSL2",
+  "plugin_base_commit": "114c483",
+  "vllm_base_commit": "e378275a8f20eac9e92212e4a1fee84ec5a31dc7",
+  "method": {
+    "prompt_tokens": [
+      34,
+      39
+    ],
+    "output_tokens": 128,
+    "warmup_tokens": 16,
+    "temperature": 0,
+    "seed": 42,
+    "ignore_eos": true,
+    "decode_rate": "127 / (last_token_ts - first_token_ts)",
+    "aggregation": "geometric mean of two requests",
+    "max_model_len": 131072,
+    "max_num_batched_tokens": 2048,
+    "dtype": "bfloat16",
+    "prefix_cache": false
+  },
+  "runs": [
+    {
+      "label": "baseline64",
+      "decode_tok_s": [
+        8.590466635453996,
+        8.535315338469978
+      ],
+      "geometric_mean_tok_s": 8.562846584997601,
+      "answer_checks": [],
+      "startup_seconds": 153.08691335100002
+    },
+    {
+      "label": "fused-graph64",
+      "decode_tok_s": [
+        26.07253030241535,
+        25.382634917056755
+      ],
+      "geometric_mean_tok_s": 25.725270028322505,
+      "answer_checks": [],
+      "startup_seconds": 155.89124145999995
+    },
+    {
+      "label": "fused-graph128",
+      "decode_tok_s": [
+        35.21269849982358,
+        34.05329703237796
+      ],
+      "geometric_mean_tok_s": 34.62814579682346,
+      "answer_checks": [],
+      "startup_seconds": 158.8228070969999
+    },
+    {
+      "label": "coop-graph128",
+      "decode_tok_s": [
+        43.13108304174964,
+        44.18822875390225
+      ],
+      "geometric_mean_tok_s": 43.65645615315548,
+      "answer_checks": [
+        {
+          "question": "What is the capital of Japan? Answer only the city name.",
+          "answer": "Tokyo",
+          "expected": "Tokyo"
+        },
+        {
+          "question": "Calculate 17 * 23. Answer only the integer.",
+          "answer": "391",
+          "expected": "391"
+        }
+      ],
+      "startup_seconds": 171.3658395360003
+    },
+    {
+      "label": "mtp3-coop-graph96-kv45",
+      "decode_tok_s": [
+        74.1134574336449,
+        57.24610823276007
+      ],
+      "geometric_mean_tok_s": 65.13606532291072,
+      "answer_checks": [
+        {
+          "question": "What is the capital of Japan? Answer only the city name.",
+          "answer": "Tokyo",
+          "expected": "Tokyo"
+        },
+        {
+          "question": "Calculate 17 * 23. Answer only the integer.",
+          "answer": "391",
+          "expected": "391"
+        }
+      ],
+      "startup_seconds": 158.60980819099996
+    }
+  ],
+  "selected": {
+    "label": "mtp3-coop-graph96-kv45",
+    "cache_rows": 96,
+    "coop": true,
+    "cuda_graph_mode": "FULL_DECODE_ONLY",
+    "capture_sizes": [
+      4
+    ],
+    "compilation_mode": 0,
+    "mtp_tokens": 3,
+    "max_num_seqs": 1,
+    "kv_cache_memory_bytes": 4831838208
+  },
+  "gain_over_baseline": 7.606823814528142,
+  "mtp_stats": {
+    "mean_acceptance_length": 3.2,
+    "draft_acceptance_percent": 73.3
+  },
+  "validation": {
+    "cpu_tests_passed": 116,
+    "cuda_cache_tests_passed": 2,
+    "cuda_cooperative_test_passed": 1
+  },
+  "limitations": [
+    "Two short prompts, one run per configuration; not a quality benchmark",
+    "Greedy text is not bit-identical: first graph comparison diverged at tokens 50 and 73",
+    "131K is configured; full-context and 32K output untested",
+    "CUPTI failed; profiler trace is CPU-only",
+    "Matched baseline differs from live Discord/Strata workloads; no direct Strata comparison"
+  ],
+  "failed_attempts": [
+    "Baseline diagnostic RPC serialization failed; removed diagnostic and reran original code snapshot",
+    "MTP3 startup required 4.05 GiB KV, exceeding available 3.96 GiB; raised reservation to 4.5 GiB",
+    "HTTP client could not JSON-encode Transformers BatchEncoding before sending generation; rendered chat template as text and explicitly encoded token IDs, then smoke passed"
+  ],
+  "http_smoke": {
+    "prompt_tokens": 8234,
+    "completion_tokens": 128,
+    "ttft_seconds": 10.470364146000065,
+    "stream_decode_seconds": 2.538148527999965,
+    "approx_stream_tok_s": 50.036472885247065,
+    "wall_seconds": 13.00883861300008,
+    "scope": "HTTP smoke with a longer prompt; no matched baseline, SSE chunks can contain multiple tokens",
+    "answer_prefix_passed": true,
+    "first_generation_after_startup": true,
+    "kernel_compilation_logged": true
+  }
+}

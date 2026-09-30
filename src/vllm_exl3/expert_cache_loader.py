@@ -1,4 +1,4 @@
-"""Direct host loading for the single-GPU, eager EXL3 cache integration."""
+"""Direct host loading for the single-GPU EXL3 cache integration."""
 
 import os
 
@@ -22,7 +22,21 @@ def create_cached_weights(method, layer, num_experts, hidden, intermediate):
 
     config = get_current_vllm_config()
     if not config.model_config.enforce_eager:
-        raise ValueError("EXL3 cache loader currently requires --enforce-eager")
+        from vllm.config import CompilationMode, CUDAGraphMode
+
+        compilation = config.compilation_config
+        if (compilation.mode != CompilationMode.NONE
+                or compilation.cudagraph_mode != CUDAGraphMode.FULL_DECODE_ONLY):
+            raise ValueError(
+                "EXL3 cache requires eager execution or mode=0 with "
+                "cudagraph_mode=FULL_DECODE_ONLY (prefill staging is eager-only)"
+            )
+        max_tokens = config.scheduler_config.max_num_seqs
+        speculative = getattr(config, "speculative_config", None)
+        if speculative is not None:
+            max_tokens *= 1 + speculative.num_speculative_tokens
+        if max(compilation.cudagraph_capture_sizes or [0]) > max_tokens:
+            raise ValueError("EXL3 decode graph sizes exceed max_num_seqs verification capacity")
     if _resolve_tp_geometry(layer)[1] != 1 or getattr(layer, "use_ep", False):
         raise ValueError("EXL3 cache loader requires TP=EP=1")
     # The NVFP4 pool is an optional extension, absent from upstream vLLM.
@@ -130,6 +144,8 @@ def finalize_cached_weights(layer):
 
 
 def install_expert_cache(model, device, max_decode_tokens):
+    from vllm.config import get_current_vllm_config
+
     layers = [m for m in model.modules() if hasattr(m, "_exl3_host_source")]
     if not layers:
         raise RuntimeError("EXL3 cache requested but no host-loaded layers found")
@@ -141,8 +157,8 @@ def install_expert_cache(model, device, max_decode_tokens):
         device=device,
     )
     cache.attach(layers)
-    # This loader explicitly requires eager execution, so profiling can safely
-    # update cache residency and there is no graph capture gate to reopen.
-    cache.set_promotions(True)
+    # Graph capture must keep placement fixed. The worker opens the gate after
+    # warmup/capture; graph replay reads that device scalar dynamically.
+    cache.set_promotions(get_current_vllm_config().model_config.enforce_eager)
     model._exl3_cache = cache
     print(f"EXL3_CACHE_INSTALLED layers={len(layers)} {cache.snapshot()}", flush=True)

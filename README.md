@@ -5,7 +5,11 @@
 Local development: [EXL3 GPU expert cache](docs/expert-cache.html)
 adds packed K2/K3 caching, shared prefill staging, and direct host loading.
 A full Qwen3.8 text-model generation passed on an RTX 5090 with the local vLLM
-integration. Full-model execution currently requires eager mode and one GPU.
+integration. Single-GPU execution supports eager prefill and decode CUDA graphs.
+The matched RTX 5090 short-prompt benchmark improved from 8.56 to 65.14 decode
+tokens/s with fused pointer updates, decode graphs, cooperative EXL3 and MTP3.
+That profile uses 96 cache rows and one active request; see the linked guide
+for qualification limits.
 The [launch script](scripts/serve-exl3.sh) uses a 2K context by default; follow the
 linked setup guide for the pinned vLLM patch, extension build, and model overlay.
 

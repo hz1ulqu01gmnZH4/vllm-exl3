@@ -10,8 +10,9 @@
 <h1>EXL3 GPU expert cache</h1>
 <p><strong>Full Qwen3.8 text-model generation passed on an RTX 5090.</strong>
 The local vLLM integration loaded all 48 decoder layers through the expert cache
-and used a packed PLE table in pinned host RAM. This is an eager, single-GPU smoke
-test; throughput, long-context behavior and broader model quality remain unqualified.</p>
+and used a packed PLE table in pinned host RAM. A matched short-prompt decode test
+improved from 8.56 to 65.14 tokens/s with CUDA graphs, expert caching and MTP3.
+Long-context behavior and broader model quality remain unqualified.</p>
 </header>
 <section>
 <h2>Implemented behavior</h2>
@@ -44,7 +45,7 @@ against that exact PyTorch environment. A binary built for PyTorch 2.11 failed
 to import and cannot be reused.</p>
 <p>Use a vLLM source checkout at the pinned commit, installed with compiled
 extensions matching the active PyTorch/CUDA environment. Apply the supplied
-<a href="../patches/vllm-e378275-exl3-cache.patch">three-file compatibility patch</a>
+<a href="../patches/vllm-e378275-exl3-cache.patch">compatibility patch</a>
 before installation. It installs the expert cache after loading, adapts Qwen PLE,
 and passes EXL3 configuration to the output head. The separate NVFP4 expert-pool
 extension is not required.</p>
@@ -154,17 +155,16 @@ The scanner separates MTP layer numbering from decoder numbering.</p>
 <p>Exit status was zero. vLLM forced termination of its remaining engine worker during
 shutdown; device memory returned to 2,394 MiB. Generation latency is not a decode-only
 throughput measurement, and no comparison with the NVFP4 profile was run.</p>
-<p>The host loader requires <code>VLLM_EXL3_EXPERT_CACHE_ROWS=64</code>,
+<p>The host loader requires a positive <code>VLLM_EXL3_EXPERT_CACHE_ROWS</code> budget (64 in the initial run),
 <code>VLLM_EXL3_MOE_KERNEL=exllamav3</code>, <code>VLLM_EXL3_NGRAM_TABLE=pinned</code>
-and <code>--enforce-eager</code>. It rejects unsupported geometry and incomplete loads.
+and eager execution or the decode-only graph configuration below. It rejects unsupported geometry and incomplete loads.
 The local vLLM patches install the cache after loading, adapt the PLE interface and
 pass the quantization config to the output head. Installing this plugin alone into
 an unmodified vLLM checkout does not provide those hooks.</p>
 <p>The full-model run used the local vLLM fork with these EXL3 hooks. The portable
 patch was subsequently checked against a clean index at the pinned vLLM revision;
 that minimal checkout has not had a separate full-model run.</p>
-<p>The next performance work is full-model CUDA graph integration and matched prefill/decode
-measurements. The standalone graph parity test does not qualify full-model graphs.</p>
+<p>The later decode measurements below qualify full-model graph replay on this local runtime.</p>
 </section>
 <section>
 <h2>Publication checks · 30 September 2026</h2>
@@ -181,7 +181,68 @@ output-head precision, source-preserving overlays and attribution.</p>
 configuration was EXL3, eager, context 2048, one sequence and 1,073,741,824 KV bytes.
 The HTTP server was not started in this publication pass. The extension build
 helper packages the earlier successful build procedure; it was not recompiled
-in this pass. Long context, 32K output, concurrent serving, tool calls, vision,
-MTP and full-model CUDA graphs remain unqualified.</p>
+in that publication pass. At that time, long context, 32K output, concurrent serving,
+tool calls, vision, MTP and full-model CUDA graphs were unqualified.</p>
+</section>
+<section>
+<h2>Decode optimization · 30 September 2026</h2>
+<p>RTX 5090, EXL3 2.50bpw, BF16, one active request, two fixed short prompts
+(34 and 39 tokens), 128 generated tokens each after warmup. Rates exclude prefill:
+127 tokens divided by the first-to-last-token interval, then a geometric mean over
+the two prompts. The engine reserves 4 GiB of KV without MTP, or 4.5 GiB with MTP,
+and allows a 131,072-token context;
+these measurements do not exercise a full context.</p>
+<table>
+<tr><th>Configuration</th><th>Decode tokens/s</th></tr>
+<tr><td>Original eager cache, 64 initial slots per layer</td><td>8.56</td></tr>
+<tr><td>Fused pointer updates + decode graphs, 64 slots</td><td>25.73</td></tr>
+<tr><td>Same, 128 slots</td><td>34.63</td></tr>
+<tr><td>Same, cooperative EXL3 kernel</td><td>43.66</td></tr>
+<tr><td>Cooperative + MTP3, 96 target slots, resident K4 draft, 4.5 GiB KV</td><td>65.14 (74.11 code / 57.25 explanation)</td></tr>
+</table>
+<p>The selected MTP profile is 7.61× the baseline and 49.2% faster than the
+non-speculative cooperative profile. It uses <strong>one active request</strong>;
+the non-speculative configurations allow four. The workload always has one active
+request. Draft acceptance was 73.3%, with mean acceptance length 3.20.
+<a href="validation/decode-optimization.json">Machine-readable results and limits</a>.</p>
+<p>Enable the single-sequence graph in the portable launcher with
+<code>EXL3_DECODE_GRAPHS=1</code>. <code>EXL3_CACHE_ROWS=128</code> increases
+residency; budget VRAM for KV and prefill too. <code>VLLM_EXL3_COOP=1</code>
+selects the tested cooperative kernel. Multiple graph batch sizes require an
+explicit compilation configuration, with no capture size beyond the cache's decode capacity:</p>
+<pre>--compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,2,4]}'
+--max-num-seqs 4 --max-model-len 131072 --max-num-batched-tokens 2048
+--kv-cache-memory-bytes 4294967296</pre>
+<p>Apply the updated vLLM patch: its worker hook opens cache promotions after
+capture. Prefill remains eager. K2/K3 GPU parity covers cache hits, eviction,
+packed bytes, and changing graph inputs at one and four tokens; cooperative
+decode also passed against the standard expert arithmetic. The cooperative
+and MTP full-model runs answered Tokyo and 17 × 23 = 391 correctly.</p>
+<p>MTP uses an explicitly resident draft layer; its K4 experts do not enter the
+target's K2/K3 cache. The patch also passes EXL3 quantization to the draft's output
+head and reserves cache staging for all verification tokens. The tested MTP
+configuration is:</p>
+<pre>EXL3_CACHE_ROWS=96 VLLM_EXL3_COOP=1 EXL3_DECODE_GRAPHS=1 \
+  scripts/serve-exl3.sh /path/to/model-overlay \
+  --max-model-len 131072 --max-num-seqs 1 --max-num-batched-tokens 2048 \
+  --kv-cache-memory-bytes 4831838208 \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
+  --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4]}'</pre>
+<p>MTP at 131K requires about 4.05 GiB of KV; the initial 4 GiB allocation was
+rejected, so the final profile reserves 4.5 GiB. The routing planner supports at
+most 64 lanes: sequences × (1 + draft tokens) × top-k must fit that bound.
+The targeted CPU suite passed 116 tests; GPU cache parity passed two tests and
+cooperative arithmetic parity passed one.</p>
+<p>The selected profile also passed an HTTP streaming smoke test with 8,234 input
+tokens and 128 output tokens. It followed the requested answer prefix and produced
+approximately 50.04 decode tokens/s, with 10.47 seconds to the first token and
+13.01 seconds total. This was the first generation request after server startup,
+and the server logged kernel compilation. The rate uses streaming chunk timestamps,
+which can contain multiple tokens; there is no matched longer-prompt baseline.
+Full 131K input and 32K output remain untested.</p>
+<p>Greedy outputs are not bit-identical across configurations; the initial graph
+comparison diverged after 50 and 73 tokens. These are performance and parity
+checks, not a model-quality evaluation. CUPTI could not initialize under WSL,
+so the saved profiler trace contains CPU events only.</p>
 </section>
 </html>

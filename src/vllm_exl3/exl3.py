@@ -2682,7 +2682,8 @@ class Exl3Config(QuantizationConfig):
             if os.environ.get("VLLM_EXL3_LOG_MOE_ROUTING"):
                 print(f"[exl3-routing] MoE {prefix} -> exl3", flush=True)
             return Exl3MoEMethod(
-                layer.moe_config, self, bits=self.bits_for_prefix(prefix)
+                layer.moe_config, self, bits=self.bits_for_prefix(prefix),
+                cache_experts=not prefix.startswith("mtp."),
             )
         if isinstance(layer, LinearBase):
             # Check if this LinearBase should use non_routed_exl3
@@ -2855,18 +2856,22 @@ class Exl3MoEMethod(FusedMoEMethodBase):
     """Packed MCG trellis experts: create/load packed tensors, LinearEXL3 apply."""
 
     def __init__(
-        self, moe, quant_config: Exl3Config, bits: int | None = None
+        self, moe, quant_config: Exl3Config, bits: int | None = None,
+        cache_experts: bool = True,
     ) -> None:
         super().__init__(moe)
         self.quant_config = quant_config
         # One method instance per RoutedExperts layer, so this is per-layer K.
         self.bits = int(bits) if bits is not None else quant_config.bits
+        # Qwen's single MTP layer stays resident; its K4 experts do not use the
+        # target model's K2/K3 host cache or shared prefill bank.
+        self.cache_experts = cache_experts
         self._logged = False
 
     @property
     def requires_device_loading(self):
         from .expert_cache_loader import cache_rows
-        return cache_rows() == 0
+        return not self.cache_experts or cache_rows() == 0
 
     def get_fused_moe_quant_config(self, layer: "RoutedExperts") -> FusedMoEQuantConfig | None:
         return None
@@ -2882,7 +2887,7 @@ class Exl3MoEMethod(FusedMoEMethodBase):
     ) -> None:
         del params_dtype
         from .expert_cache_loader import cache_rows, create_cached_weights
-        if cache_rows():
+        if self.cache_experts and cache_rows():
             create_cached_weights(
                 self, layer, num_experts, hidden_size,
                 intermediate_size_per_partition,

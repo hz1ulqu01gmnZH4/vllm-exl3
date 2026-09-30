@@ -136,6 +136,18 @@ class PackedExpertLayer:
 
 
 @triton.jit
+def _update_pointers(
+    mapping, offsets, pointers, bank_address,
+    ROW_BYTES: tl.constexpr, EXPERTS: tl.constexpr, BLOCK: tl.constexpr,
+):
+    expert = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    segment = tl.program_id(1)
+    slot = tl.load(mapping + expert, expert < EXPERTS, other=0).to(tl.int64)
+    address = bank_address + tl.maximum(slot, 0) * ROW_BYTES + tl.load(offsets + segment)
+    tl.store(pointers + segment * EXPERTS + expert, address, expert < EXPERTS)
+
+
+@triton.jit
 def _copy_misses(
     src, dst, src_rows, dst_rows, count_ptr,
     SRC_WORDS: tl.constexpr, DST_WORDS: tl.constexpr,
@@ -226,6 +238,8 @@ class Exl3ExpertCache:
         self.buffers = []
         self.states = []
         self.prefill_states = []
+        self.pointer_tables = []
+        self.segment_offsets = []
         start = 0
         for source, slots in zip(sources, slots_per_layer):
             self.bank[start:start + slots, :source.data.shape[1]].copy_(
@@ -245,9 +259,17 @@ class Exl3ExpertCache:
                 "_exl3_codebook_flags": (False, True) * 3,
                 "_exl3_inners": source.inners(self.prefill_bank),
             }
-            self.states.append(SimpleNamespace(
-                **attrs, _exl3_ptrs={k: torch.empty_like(v) for k, v in prefill_ptrs.items()}
+            pointer_table = torch.empty(
+                (len(source.segments), self.num_experts), dtype=torch.int64,
+                device=self.device,
+            )
+            self.pointer_tables.append(pointer_table)
+            self.segment_offsets.append(torch.tensor(
+                [s.offset for s in source.segments], dtype=torch.int64, device=self.device,
             ))
+            self.states.append(SimpleNamespace(**attrs, _exl3_ptrs={
+                segment.name: pointer_table[j] for j, segment in enumerate(source.segments)
+            }))
             self.prefill_states.append(SimpleNamespace(**attrs, _exl3_ptrs=prefill_ptrs))
         policy.set_control(self.tables, gate=0)
 
@@ -308,10 +330,11 @@ class Exl3ExpertCache:
                 PROGRAMS=32, BLOCK=4096,
             )
             state = self.states[layer_index]
-            slot = buffers.step_map.to(torch.int64)
-            for segment in source.segments:
-                ptr = self.bank.data_ptr() + slot.clamp(min=0) * self.row_words * 4
-                state._exl3_ptrs[segment.name].copy_(ptr + segment.offset)
+            _update_pointers[(triton.cdiv(self.num_experts, 256), len(source.segments))](
+                buffers.step_map, self.segment_offsets[layer_index],
+                self.pointer_tables[layer_index], self.bank.data_ptr(),
+                ROW_BYTES=self.row_words * 4, EXPERTS=self.num_experts, BLOCK=256,
+            )
         else:
             if torch.cuda.is_current_stream_capturing():
                 raise RuntimeError("Shared EXL3 prefill staging is eager-only")

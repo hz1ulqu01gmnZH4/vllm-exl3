@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Text-only, eager, single-GPU Qwen EXL3 expert-cache profile.
+# Text-only, single-GPU Qwen EXL3 expert-cache profile.
 set -euo pipefail
 
 if [[ "${1:-}" == "--help" || $# == 0 ]]; then
@@ -10,6 +10,7 @@ Activate the matching vLLM/PyTorch/ExLlamaV3 environment first.
 EXL3_PYTHON selects its Python executable (default: python).
 PYTHONPATH may select the patched vLLM source and a compatible EXL3 extension.
 EXL3_CACHE_ROWS selects initial expert slots per layer (default: 64).
+EXL3_DECODE_GRAPHS=1 enables a decode CUDA graph for the default single sequence.
 
 Defaults: localhost:8009, qwen3.8-exl3, context 2048, one sequence, eager,
 batch 128, BF16 KV with a 1 GiB budget. Trailing vLLM options override defaults.
@@ -41,11 +42,17 @@ export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}"
 export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True,pinned_max_round_threshold_mb:1,pinned_max_cached_size_mb:1}"
 
+case "${EXL3_DECODE_GRAPHS:-0}" in
+  0) execution_args=(--enforce-eager) ;;
+  1) execution_args=(--compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1]}') ;;
+  *) echo 'EXL3_DECODE_GRAPHS must be 0 or 1.' >&2; exit 2 ;;
+esac
+
 serve_args=("$model_dir"
   --served-model-name qwen3.8-exl3 --host 127.0.0.1 --port 8009
   --quantization exl3 --dtype bfloat16 --tensor-parallel-size 1
   --load-format safetensors --safetensors-load-strategy lazy
-  --language-model-only --enforce-eager
+  --language-model-only "${execution_args[@]}"
   --max-model-len 2048 --max-num-seqs 1 --max-num-batched-tokens 128
   --gpu-memory-utilization 0.85 --kv-cache-memory-bytes 1073741824
   --no-enable-prefix-caching --seed 42
