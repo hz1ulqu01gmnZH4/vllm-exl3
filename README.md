@@ -2,6 +2,13 @@
 
 # vllm-exl3
 
+Local development: [EXL3 GPU expert cache](docs/expert-cache.html)
+adds packed K2/K3 caching, shared prefill staging, and direct host loading.
+A full Qwen3.8 text-model generation passed on an RTX 5090 with the local vLLM
+integration. Full-model execution currently requires eager mode and one GPU.
+The [launch script](scripts/serve-exl3.sh) uses a 2K context by default; follow the
+linked setup guide for the pinned vLLM patch, extension build, and model overlay.
+
 [![Follow on X](https://img.shields.io/badge/Follow-%40ViC305-black?logo=x)](https://x.com/ViC305) [![Follow on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Follow-vcruz305-yellow)](https://huggingface.co/vcruz305)
 
 An out-of-tree vLLM plugin registering `--quantization exl3` for EXL3 (ExLlamaV3 trellis) packs. It serves routed MoE experts and declared dense EXL3 tensors through ExLlamaV3 and optional native CUDA kernels. This is a **serving plugin, not a quantizer**.

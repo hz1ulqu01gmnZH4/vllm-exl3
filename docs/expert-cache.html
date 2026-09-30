@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EXL3 GPU expert cache prototype</title>
+<style>
+*{box-sizing:border-box}body{margin:32px auto;max-width:1000px;padding:0 20px;background:#eee;color:#111;font:17px/1.6 system-ui,sans-serif}header,section{border:3px solid #000;background:#fff;padding:24px;margin:0 0 28px;box-shadow:7px 7px 0 #000}h1,h2{line-height:1.2}a{color:inherit}code,pre{font-family:ui-monospace,monospace}pre{padding:16px;border:2px solid #000;background:#eee;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}td,th{border:2px solid #000;padding:10px;text-align:left}th{background:#ddd}
+</style>
+<header>
+<h1>EXL3 GPU expert cache</h1>
+<p><strong>Full Qwen3.8 text-model generation passed on an RTX 5090.</strong>
+The local vLLM integration loaded all 48 decoder layers through the expert cache
+and used a packed PLE table in pinned host RAM. This is an eager, single-GPU smoke
+test; throughput, long-context behavior and broader model quality remain unqualified.</p>
+</header>
+<section>
+<h2>Implemented behavior</h2>
+<p>Packed expert sources remain in pinned host RAM. A device-side global LRU planner
+chooses GPU slots across layers, and a Triton kernel copies only missing expert rows.
+The EXL3 kernel receives logical-expert pointer tables updated in place on the GPU.
+No CPU routing readback occurs in decode. Wider batches copy a full expert layer
+into a separate reusable GPU buffer, leaving decode residency unchanged.</p>
+<p>K2 and K3 layers share slots sized for the largest packed expert. Padding is unused
+capacity; it does not change the encoded precision or requantize any weights.
+N-gram embeddings and dense layers are outside this cache.</p>
+<table>
+<tr><th>Part</th><th>Source</th></tr>
+<tr><td>Packing, copies, pointer tables, consumer</td><td><a href="../src/vllm_exl3/expert_cache.py">expert_cache.py</a></td></tr>
+<tr><td>Global eviction and staging policy</td><td><a href="../src/vllm_exl3/expert_cache_tables.py">expert_cache_tables.py</a>, adapted from the local vLLM expert-pool implementation</td></tr>
+<tr><td>Normal plugin dispatch</td><td><a href="../src/vllm_exl3/exl3.py">apply_exl3_experts</a> uses an explicitly attached cache</td></tr>
+<tr><td>Direct host checkpoint loading</td><td><a href="../src/vllm_exl3/expert_cache_loader.py">expert_cache_loader.py</a></td></tr>
+<tr><td>Current Qwen PLE interface</td><td><a href="../src/vllm_exl3/qwen_ple.py">qwen_ple.py</a>, with <code>VLLM_EXL3_NGRAM_TABLE=pinned</code></td></tr>
+<tr><td>GPU qualification</td><td><a href="../tests/test_expert_cache_cuda.py">test_expert_cache_cuda.py</a></td></tr>
+</table>
+</section>
+<section>
+<h2>Setup and launch</h2>
+<p>This Qwen recipe targets vLLM commit
+<code>e378275a8f20eac9e92212e4a1fee84ec5a31dc7</code>. It differs from the
+upstream plugin's general compatibility target. The full-model run used Python
+3.12.8, PyTorch 2.13.0+cu130, Triton 3.7.1, safetensors 0.8.0 and an RTX 5090.
+ExLlamaV3 1.5.2 native sources were rebuilt with CUDA toolkit 13.4 for SM120
+against that exact PyTorch environment. A binary built for PyTorch 2.11 failed
+to import and cannot be reused.</p>
+<p>Use a vLLM source checkout at the pinned commit, installed with compiled
+extensions matching the active PyTorch/CUDA environment. Apply the supplied
+<a href="../patches/vllm-e378275-exl3-cache.patch">three-file compatibility patch</a>
+before installation. It installs the expert cache after loading, adapts Qwen PLE,
+and passes EXL3 configuration to the output head. The separate NVFP4 expert-pool
+extension is not required.</p>
+<pre># Run from this repository, with the matching Python environment active.
+export VLLM_SOURCE=/path/to/vllm-at-e378275
+git -C "$VLLM_SOURCE" apply "$PWD/patches/vllm-e378275-exl3-cache.patch"
+# Build/install that vLLM source with matching native extensions first.
+VLLM_EXL3_NO_CUDA=1 uv pip install --no-deps -e .</pre>
+<p>The plugin uses ExLlamaV3's fused CUDA kernels for this profile. To rebuild them,
+provide the ExLlamaV3 1.5.2 Python package directory containing <code>ext.py</code>
+and <code>exllamav3_ext/</code>, with its Python dependencies available in the
+active environment. The helper refuses a preinstalled native binary and requires
+a new output directory. Its output is tied to the active PyTorch build.</p>
+<pre>python scripts/build-exllamav3.py /path/to/exllamav3 /path/to/exl3-runtime --arch 12.0
+export PYTHONPATH="/path/to/exl3-runtime${PYTHONPATH:+:$PYTHONPATH}"</pre>
+<p>Prepare a new serving overlay from the existing native EXL3 checkpoint.
+This symlinks weights and tokenizer assets, copies the configuration and rebuilds
+the tensor index. The source checkpoint is preserved. An existing destination is
+rejected; a failed preparation leaves its partial destination for inspection.</p>
+<pre>export NATIVE_MODEL=/path/to/Qwen3.8-Flash-Next-EXL3-2.50bpw
+export MODEL_OVERLAY=/path/to/Qwen3.8-Flash-Next-EXL3-cache
+python tools/exl3_pack_tools/prepare_qwen_overlay.py "$NATIVE_MODEL" "$MODEL_OVERLAY"
+scripts/serve-exl3.sh --check-config "$MODEL_OVERLAY"
+scripts/serve-exl3.sh "$MODEL_OVERLAY"</pre>
+<p><a href="../scripts/serve-exl3.sh">The launcher</a> serves
+<code>qwen3.8-exl3</code> at <code>http://127.0.0.1:8009/v1</code>.
+It defaults to eager text-only execution, one sequence, 2,048 total context tokens,
+a 128-token prefill batch and 1 GiB of BF16 KV storage. It keeps 64 initial expert
+slots per layer and stores packed experts and PLE in pinned host memory: about
+54 GiB combined, plus runtime and loading overhead. Enough free host RAM is required.</p>
+<pre>curl http://127.0.0.1:8009/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.8-exl3","messages":[{"role":"user","content":"What is the capital of Japan?"}],"max_tokens":32}'</pre>
+<p><code>EXL3_PYTHON</code> selects the Python executable;
+<code>EXL3_CACHE_ROWS</code> changes cache capacity. Trailing vLLM arguments override
+the script defaults, for example <code>--port 8010</code>. Context length includes
+both input and output. A client entry advertising 131,072 context tokens and
+32,768 output tokens does not increase the server's context or memory budget.
+That larger serving profile requires separate memory sizing and validation.</p>
+</section>
+<section>
+<h2>Explicit API</h2>
+<p>Each expert is a dictionary of <code>gate</code>, <code>up</code> and <code>down</code>.
+Each projection contains native <code>trellis</code>, <code>suh</code>, <code>svh</code>
+and <code>mul1</code> tensors. Expert IDs must match the supplied layers' routing IDs.</p>
+<pre>from vllm_exl3.expert_cache import PackedExpertLayer, Exl3ExpertCache
+
+sources = [PackedExpertLayer.from_experts(experts) for experts in layer_experts]
+cache = Exl3ExpertCache(
+    sources, slots_per_layer=64, top_k=10, max_decode_tokens=4,
+)
+cache.attach(layers)  # the loaded EXL3 MoE modules, in source order
+cache.set_promotions(False)  # profiling and graph capture
+# Capture the normal apply_exl3_experts calls.
+cache.set_promotions(True)   # real routing, including graph replay</pre>
+<p>Set <code>VLLM_EXL3_MOE_KERNEL=exllamav3</code>. The cache requires the ExLlamaV3
+1.5.x 35-argument fused MoE binding and <code>pinned_cuda_view</code>. Calls must be
+serialized on one CUDA stream; keep host sources immutable. Prefill is eager-only.
+The current scope is whole experts on one GPU, K2/K3 mul1, uniform precision within
+each layer, equal expert geometry across layers, at most 64 decode routing lanes,
+and no expert biases. Unsupported inputs raise errors.</p>
+<p><strong>Attaching does not release an existing layer's resident weights or change its
+loader.</strong> This API alone will not make a full checkpoint fit on a 32 GB GPU.
+A serving integration must load expert sources directly into pinned host memory,
+bind the cache after loading, and control the promotion gate around warm-up/capture.</p>
+</section>
+<section>
+<h2>Recorded validation · 29 September 2026</h2>
+<p>Two CUDA tests passed using 16 real experts each from Qwen3.8-Flash-Next decoder
+layers 0 (K3) and 12 (K2), with native 2560 × 640 dimensions and top-k 10.
+The reference is the same EXL3 weights in GPU memory through the plugin's fused
+kernel. Eager output maximum absolute difference was <code>7.62939453125e-06</code>.
+The shared test tolerance was rtol=0.02, atol=0.02.</p>
+<p>Coverage includes frozen-gate staging, promotion, cross-layer eviction,
+a warm hit with zero expert copies, prefill at 32/320/2200 rows, FP16 and BF16 inputs,
+and changed-input/changed-routing CUDA graph replay. Prefill leaves decode ownership
+unchanged, and occupied GPU slots match their host sources byte-for-byte.</p>
+<p>The test used the existing ExLlamaV3 1.5.2 / PyTorch 2.11.0 environment.
+The subsequent full-model test used an extension rebuilt against PyTorch 2.13.0.
+The standalone fixture supplies
+only vLLM's logging-method names; it does not mock the CUDA kernels.</p>
+<pre>VLLM_EXL3_MOE_KERNEL=exllamav3 \
+EXL3_CACHE_TEST_MODEL=/path/to/Qwen3.8-Flash-Next-EXL3-2.50bpw \
+PYTHONPATH=src python -m pytest tests/test_expert_cache_cuda.py -v -s</pre>
+<p>Use a Python environment with compatible PyTorch, ExLlamaV3 CUDA extension,
+Triton, safetensors and pytest. An unset model path skips this optional test;
+skips are not GPU qualification.</p>
+<p>The repository includes a <a href="validation/expert-cache-smoke.json">portable
+validation record</a>. Raw experiment logs remain local. No serving speedup is claimed.</p>
+</section>
+<section>
+<h2>Full-model smoke test · 29 September 2026</h2>
+<p>Checkpoint: <code>Qwen3.8-Flash-Next-EXL3-2.50bpw</code>. The original checkpoint
+was preserved; a symlink overlay carries a derived quantization config and rebuilt index.
+The scanner separates MTP layer numbering from decoder numbering.</p>
+<table>
+<tr><th>Measurement</th><th>Observed</th></tr>
+<tr><td>Configuration</td><td>Text only, no MTP; eager; TP=1; one sequence; context 2048; batch 128; 1 GiB KV allocation</td></tr>
+<tr><td>Experts</td><td>48 layers × 512 experts; K2/K3; top-k 10; 64 initial cache slots per layer</td></tr>
+<tr><td>Packed expert host storage</td><td>37,906,022,400 bytes (35.30 GiB)</td></tr>
+<tr><td>GPU bank / shared prefill buffer</td><td>5,739,916,800 / 953,548,800 bytes</td></tr>
+<tr><td>PLE</td><td>K3; 128 shards; 18.48 GiB pinned host storage</td></tr>
+<tr><td>Startup</td><td>525.07 seconds, including initialization and warm-up</td></tr>
+<tr><td>First response</td><td>“The capital of Japan is Tokyo.” — 25 prompt tokens, 8 output tokens, 2.43 seconds including prefill and first-shape JIT</td></tr>
+<tr><td>Sampled device memory peak</td><td>17,191 MiB, sampled every 2 seconds; includes about 2,395 MiB of baseline device use</td></tr>
+</table>
+<p>Exit status was zero. vLLM forced termination of its remaining engine worker during
+shutdown; device memory returned to 2,394 MiB. Generation latency is not a decode-only
+throughput measurement, and no comparison with the NVFP4 profile was run.</p>
+<p>The host loader requires <code>VLLM_EXL3_EXPERT_CACHE_ROWS=64</code>,
+<code>VLLM_EXL3_MOE_KERNEL=exllamav3</code>, <code>VLLM_EXL3_NGRAM_TABLE=pinned</code>
+and <code>--enforce-eager</code>. It rejects unsupported geometry and incomplete loads.
+The local vLLM patches install the cache after loading, adapt the PLE interface and
+pass the quantization config to the output head. Installing this plugin alone into
+an unmodified vLLM checkout does not provide those hooks.</p>
+<p>The full-model run used the local vLLM fork with these EXL3 hooks. The portable
+patch was subsequently checked against a clean index at the pinned vLLM revision;
+that minimal checkout has not had a separate full-model run.</p>
+<p>The next performance work is full-model CUDA graph integration and matched prefill/decode
+measurements. The standalone graph parity test does not qualify full-model graphs.</p>
+</section>
+<section>
+<h2>Publication checks · 30 September 2026</h2>
+<p>The targeted CPU suite passed: <strong>142 passed, 1 skipped</strong> in 7.73
+seconds. The skip requires a CUDA device. Tests cover loader bytes, missing and
+duplicate tensors, dispatch compatibility, pack metadata, MTP layer numbering,
+output-head precision, source-preserving overlays and attribution.</p>
+<pre>CUDA_VISIBLE_DEVICES='' python -m pytest \
+  tests/test_exl3_moe_arity.py tests/test_physical_k_compat.py \
+  tests/test_routing_parity.py tests/test_pack_tools_ngram_fixture.py \
+  tests/test_ngram_layouts.py tests/test_expert_cache_loader.py \
+  tests/test_attribution_and_sanitization.py -q</pre>
+<p>Shell syntax and configuration resolution passed for the launcher. The resolved
+configuration was EXL3, eager, context 2048, one sequence and 1,073,741,824 KV bytes.
+The HTTP server was not started in this publication pass. The extension build
+helper packages the earlier successful build procedure; it was not recompiled
+in this pass. Long context, 32K output, concurrent serving, tool calls, vision,
+MTP and full-model CUDA graphs remain unqualified.</p>
+</section>
+</html>

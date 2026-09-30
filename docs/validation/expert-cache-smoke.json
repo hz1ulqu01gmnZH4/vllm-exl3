@@ -1,0 +1,108 @@
+{
+  "checkpoint": "Qwen3.8-Flash-Next-EXL3-2.50bpw",
+  "hardware": "NVIDIA GeForce RTX 5090",
+  "full_model": {
+    "date": "2026-09-29",
+    "scope": "Local patched vLLM fork, offline text generation; no HTTP server",
+    "vllm_base_commit": "e378275a8f20eac9e92212e4a1fee84ec5a31dc7",
+    "plugin_base_commit": "223e246ff8da552d2ace976c4bcbed804a8ec04c",
+    "environment": {
+      "python": "3.12.8",
+      "torch": "2.13.0+cu130",
+      "vllm": "0.29.1rc1.dev423+ge378275a8",
+      "triton": "3.7.1",
+      "safetensors": "0.8.0",
+      "exllamav3_source": "1.5.2+cu132.torch2.11.0",
+      "extension_build": "Rebuilt against active torch using CUDA toolkit 13.4, SM120"
+    },
+    "engine": {
+      "max_model_len": 2048,
+      "max_num_seqs": 1,
+      "max_num_batched_tokens": 128,
+      "tensor_parallel_size": 1,
+      "enforce_eager": true,
+      "language_model_only": true,
+      "kv_cache_memory_bytes": 1073741824,
+      "expert_cache_rows": 64,
+      "ngram_table": "pinned"
+    },
+    "exit_code": 0,
+    "measurements": {
+      "startup_seconds": 525.0710887869991,
+      "generation_seconds": 2.4265651519999665,
+      "prompt_tokens": 25,
+      "output_tokens": 8,
+      "text": "The capital of Japan is Tokyo.",
+      "finish_reason": "stop",
+      "gpu_peak_sampled_mib": 17191,
+      "gpu_last_sample_mib": 2394,
+      "gpu_sample_interval_seconds": 2,
+      "cached_layers": 48,
+      "slots_per_layer": 64,
+      "expert_host_bytes": 37906022400,
+      "cache_bank_bytes": 5739916800,
+      "shared_prefill_bytes": 953548800
+    },
+    "measurement_limits": [
+      "Generation includes prefill and first-shape JIT; not decode-only throughput",
+      "Memory sampled device-wide every 2 seconds, baseline 2395 MiB",
+      "Remaining engine worker was terminated during shutdown; memory returned to 2394 MiB"
+    ]
+  },
+  "standalone_cuda_parity": {
+    "date": "2026-09-29",
+    "passed": 2,
+    "environment": "ExLlamaV3 1.5.2 with PyTorch 2.11.0",
+    "layers": [
+      0,
+      12
+    ],
+    "bits": [
+      3,
+      2
+    ],
+    "experts_per_layer": 16,
+    "hidden": 2560,
+    "intermediate": 640,
+    "top_k": 10,
+    "max_eager_absolute_error": 7.62939453125e-06,
+    "rtol": 0.02,
+    "atol": 0.02,
+    "coverage": [
+      "decode",
+      "staging",
+      "cross-layer eviction",
+      "warm hits",
+      "prefill 32/320/2200 rows",
+      "FP16/BF16",
+      "changed-input and changed-routing CUDA graph replay",
+      "resident packed-byte equality"
+    ]
+  },
+  "publication_checks": {
+    "date": "2026-09-30",
+    "cpu_pytest_passed": 142,
+    "cpu_pytest_skipped": 1,
+    "cpu_pytest_seconds": 7.73,
+    "skip_reason": "Registered ngram op test requires available CUDA device; CUDA hidden for CPU run",
+    "patch_apply_clean_index": true,
+    "launcher_bash_syntax": true,
+    "launcher_config_resolved": true,
+    "limits": [
+      "Portable minimal vLLM patch has not had a separate full-model run",
+      "Native build helper not recompiled during publication checks",
+      "Launcher configuration check does not start the HTTP service or load weights"
+    ]
+  },
+  "unqualified": [
+    "serving speedup",
+    "131072-token context",
+    "32768-token output",
+    "concurrent serving",
+    "tool calling",
+    "vision",
+    "MTP",
+    "full-model CUDA graphs"
+  ],
+  "raw_logs": "Retained locally; this record contains the portable measured summary"
+}
