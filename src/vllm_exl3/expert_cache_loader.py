@@ -155,6 +155,7 @@ def install_expert_cache(model, device, max_decode_tokens):
         top_k=layers[0]._exl3_top_k,
         max_decode_tokens=max_decode_tokens,
         device=device,
+        cache_policy=os.environ.get("VLLM_EXL3_EXPERT_CACHE_POLICY", "global-lru"),
     )
     cache.attach(layers)
     # Graph capture must keep placement fixed. The worker opens the gate after

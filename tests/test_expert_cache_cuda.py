@@ -51,8 +51,8 @@ def _reference(experts, source):
     return layer
 
 
-@pytest.fixture(scope="module")
-def real_layers():
+@pytest.fixture(scope="module", params=["global-lru", "precision-lru"])
+def real_layers(request):
     model_path = os.environ.get("EXL3_CACHE_TEST_MODEL")
     if not model_path:
         pytest.skip("EXL3_CACHE_TEST_MODEL is required for real-checkpoint GPU parity")
@@ -65,11 +65,16 @@ def real_layers():
         exl3.logger.warning_once = exl3.logger.warning
     assert not exl3._COOP, "This qualification covers the standard EXL3 fused kernel"
     torch.manual_seed(20260929)
-    experts = [_load_experts(Path(model_path), layer, 16) for layer in (0, 12)]
+    # Two distinct K3 layers exercise offsets and cross-layer eviction inside
+    # one precision pool, alongside a separate K2 pool.
+    experts = [_load_experts(Path(model_path), layer, 16) for layer in (0, 12, 1)]
     sources = [PackedExpertLayer.from_experts(e) for e in experts]
-    assert [s.bits for s in sources] == [3, 2]
+    assert [s.bits for s in sources] == [3, 2, 3]
     refs = [_reference(e, s) for e, s in zip(experts, sources)]
-    cache = Exl3ExpertCache(sources, slots_per_layer=10, top_k=10, max_decode_tokens=4)
+    cache = Exl3ExpertCache(
+        sources, slots_per_layer=10, top_k=10, max_decode_tokens=4,
+        cache_policy=request.param,
+    )
     bound = [SimpleNamespace(
         _exl3_hidden_size=s.hidden, _exl3_intermediate_local=s.intermediate,
         _exl3_bits=s.bits,
@@ -114,7 +119,7 @@ def test_real_k2_k3_decode_eviction_prefill_and_graph_replay(real_layers):
     assert int(cache.buffers[0].gather_count[0]) == 6
     cache.set_promotions(True)
     # Each token chooses distinct experts; rows can repeat a route across tokens.
-    for i, start, rows in ((0, 6, 1), (1, 6, 4), (0, 0, 4), (1, 2, 1)):
+    for i, start, rows in ((0, 6, 1), (1, 6, 4), (2, 6, 4), (0, 0, 4), (1, 2, 1)):
         compare(i, _inputs(rows, start))
     cache.snapshot()
     # A warm hit performs no host-to-device expert copy.
@@ -122,11 +127,12 @@ def test_real_k2_k3_decode_eviction_prefill_and_graph_replay(real_layers):
     compare(1, args)
     assert int(cache.buffers[1].gather_count[0]) == 0
 
-    placement = cache.tables.row_key.clone()
+    placement = [t.row_key.clone() for t in cache.policy_tables.values()]
     for rows in (32, 320, 2200):
-        for i in range(2):
+        for i in range(len(bound)):
             compare(i, _inputs(rows, 4))
-    assert torch.equal(cache.tables.row_key, placement), "Prefill must not evict decode entries"
+    after = [t.row_key for t in cache.policy_tables.values()]
+    assert all(torch.equal(a, b) for a, b in zip(after, placement)), "Prefill evicted entries"
     compare(0, _inputs(1, 7, dtype=torch.float16))
 
     # Capture with promotions disabled, replay after opening the gate. Both
@@ -159,12 +165,15 @@ def test_real_k2_k3_decode_eviction_prefill_and_graph_replay(real_layers):
     snapshot = cache.snapshot()
     # Verify every occupied slot against the immutable packed source, including
     # slots that changed from a K3 layer to K2 or in the opposite direction.
-    for row, key in enumerate(cache.tables.row_key.tolist()):
-        if key < 0:
-            continue
-        i, expert = divmod(key, 16)
+    for i, (table, index) in enumerate(cache.layer_tables):
         source = cache.sources[i]
-        assert torch.equal(cache.bank[row, :source.data.shape[1]].cpu(), source.data[expert])
+        for expert, row in enumerate(table.layer_slice(table.hot_phys, index).tolist()):
+            if row >= 0:
+                assert torch.equal(cache.layer_banks[i][row, :source.data.shape[1]].cpu(),
+                                   source.data[expert])
+    if cache.cache_policy == "precision-lru":
+        assert all(b.shape[1] == s.data.shape[1]
+                   for b, s in zip(cache.layer_banks, cache.sources))
     print(json.dumps({"result": "PASS", "max_abs_error": worst, **snapshot}, sort_keys=True))
 
 
@@ -187,7 +196,7 @@ def test_cooperative_decode_matches_standard_experts(real_layers, monkeypatch):
     cache, refs, bound = real_layers
     assert hasattr(cache.ext, "exl3_moe_coop")
     for rows in (1, 4):
-        for i in range(2):
+        for i in range(len(bound)):
             args = _inputs(rows, 5)
             args[1].add_(torch.arange(rows, device="cuda")[:, None]).remainder_(16)
             monkeypatch.setattr(exl3, "_COOP", False)

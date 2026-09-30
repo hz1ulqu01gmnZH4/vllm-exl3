@@ -166,7 +166,9 @@ def _copy_misses(
 
 
 class Exl3ExpertCache:
-    """Global LRU bank shared across K2/K3 layers, with separate prefill space.
+    """LRU expert banks, optionally partitioned by packed row size.
+
+    Precision pools remove K2 padding and retain cross-layer LRU within each pool.
 
     Calls must be serialized on one CUDA stream, as in the vLLM model runner.
     Call set_promotions(False) before profiling/capture and True afterwards.
@@ -174,7 +176,7 @@ class Exl3ExpertCache:
     """
 
     def __init__(self, sources, *, slots_per_layer, top_k, max_decode_tokens=4,
-                 device="cuda:0"):
+                 device="cuda:0", cache_policy="global-lru"):
         from .exl3 import TEMP_ROWS_FUSED, _exl3_moe_arity, load_exllamav3_ext
 
         self.device = torch.device(device)
@@ -202,6 +204,9 @@ class Exl3ExpertCache:
             raise ValueError("Decode routes exceed the 64-lane planner limit")
         if any(not top_k <= s < first.num_experts for s in slots_per_layer):
             raise ValueError("Slots per layer must be >= top_k and < expert count")
+        if cache_policy not in ("global-lru", "precision-lru"):
+            raise ValueError(f"Unknown EXL3 cache policy: {cache_policy}")
+        self.cache_policy = cache_policy
         self.ext = load_exllamav3_ext()
         if _exl3_moe_arity(self.ext.exl3_moe) != 35:
             raise RuntimeError("Cache prototype requires the ExLlamaV3 1.5.x MoE ABI")
@@ -216,11 +221,33 @@ class Exl3ExpertCache:
         self.tables = policy.allocate_global_tables(
             self.device, self.num_experts, slots_per_layer, staging
         )
+        self.policy_tables = {}
+        self.layer_tables = []
         self.row_words = max(s.data.shape[1] for s in sources)
-        self.bank = torch.zeros(
-            (sum(slots_per_layer) + staging, self.row_words),
-            dtype=torch.int32, device=self.device,
-        )
+        self.banks = {}
+        if cache_policy == "global-lru":
+            self.bank = torch.zeros(
+                (sum(slots_per_layer) + staging, self.row_words),
+                dtype=torch.int32, device=self.device,
+            )
+            self.banks[0] = self.bank
+            self.policy_tables[0] = self.tables
+        else:
+            for words in sorted({s.data.shape[1] for s in sources}):
+                rows = sum(n for s, n in zip(sources, slots_per_layer)
+                           if s.data.shape[1] == words)
+                self.banks[words] = torch.zeros(
+                    (rows + staging, words), dtype=torch.int32, device=self.device,
+                )
+                if cache_policy == "precision-lru":
+                    table = policy.allocate_global_tables(
+                        self.device, self.num_experts,
+                        [n for s, n in zip(sources, slots_per_layer)
+                         if s.data.shape[1] == words], staging,
+                    )
+                    table.gate = self.tables.gate
+                    self.policy_tables[words] = table
+        self.layer_banks = []
         self.prefill_bank = torch.empty(
             (self.num_experts, self.row_words), dtype=torch.int32, device=self.device
         )
@@ -241,8 +268,21 @@ class Exl3ExpertCache:
         self.pointer_tables = []
         self.segment_offsets = []
         start = 0
-        for source, slots in zip(sources, slots_per_layer):
-            self.bank[start:start + slots, :source.data.shape[1]].copy_(
+        starts = dict.fromkeys(self.banks, 0)
+        group_layers = dict.fromkeys(self.banks, 0)
+        for layer_index, (source, slots) in enumerate(zip(sources, slots_per_layer)):
+            if cache_policy != "global-lru":
+                key = source.data.shape[1]
+                bank = self.banks[key]
+                start = starts[key]
+                self.layer_tables.append((self.policy_tables[key], group_layers[key]))
+                group_layers[key] += 1
+                starts[key] += slots
+            else:
+                bank = self.bank
+                self.layer_tables.append((self.tables, layer_index))
+            self.layer_banks.append(bank)
+            bank[start:start + slots, :source.data.shape[1]].copy_(
                 source.data[:slots], non_blocking=True
             )
             start += slots
@@ -321,19 +361,21 @@ class Exl3ExpertCache:
         source = self.sources[layer_index]
         if x.shape[0] <= self.max_decode_tokens:
             buffers = self.buffers[layer_index]
-            policy.step(self.tables, layer_index, ids, buffers)
-            torch._assert_async((self.tables.error == 0).all(), "EXL3 cache planner failed")
+            bank = self.layer_banks[layer_index]
+            table, index = self.layer_tables[layer_index]
+            policy.step(table, index, ids, buffers)
+            torch._assert_async((table.error == 0).all(), "EXL3 cache planner failed")
             _copy_misses[(32,)](
-                self.host_views[layer_index], self.bank,
+                self.host_views[layer_index], bank,
                 buffers.gather_src, buffers.gather_dst, buffers.gather_count,
-                SRC_WORDS=source.data.shape[1], DST_WORDS=self.row_words,
+                SRC_WORDS=source.data.shape[1], DST_WORDS=bank.shape[1],
                 PROGRAMS=32, BLOCK=4096,
             )
             state = self.states[layer_index]
             _update_pointers[(triton.cdiv(self.num_experts, 256), len(source.segments))](
                 buffers.step_map, self.segment_offsets[layer_index],
-                self.pointer_tables[layer_index], self.bank.data_ptr(),
-                ROW_BYTES=self.row_words * 4, EXPERTS=self.num_experts, BLOCK=256,
+                self.pointer_tables[layer_index], bank.data_ptr(),
+                ROW_BYTES=bank.shape[1] * 4, EXPERTS=self.num_experts, BLOCK=256,
             )
         else:
             if torch.cuda.is_current_stream_capturing():
@@ -347,12 +389,17 @@ class Exl3ExpertCache:
 
     def snapshot(self):
         """Read back cache invariants and footprint outside the forward path."""
-        policy.check_global_tables(self.tables)
-        return {
-            "resident_per_layer": policy.resident_per_layer(self.tables),
-            "bank_bytes": self.bank.numel() * self.bank.element_size(),
+        for table in self.policy_tables.values():
+            policy.check_global_tables(table)
+        resident = [int((table.layer_slice(table.hot_phys, i) >= 0).sum())
+                    for table, i in self.layer_tables]
+        result = {
+            "cache_policy": self.cache_policy,
+            "resident_per_layer": resident,
+            "bank_bytes": sum(b.numel() * b.element_size() for b in self.banks.values()),
             "prefill_bytes": self.prefill_bank.numel() * self.prefill_bank.element_size(),
             "host_bytes": sum(s.data.numel() * s.data.element_size() for s in self.sources),
             "last_copies": [int(b.gather_count[0]) for b in self.buffers],
             "slot_bytes": self.row_words * 4,
         }
+        return result

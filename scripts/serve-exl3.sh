@@ -10,6 +10,7 @@ Activate the matching vLLM/PyTorch/ExLlamaV3 environment first.
 EXL3_PYTHON selects its Python executable (default: python).
 PYTHONPATH may select the patched vLLM source and a compatible EXL3 extension.
 EXL3_CACHE_ROWS selects initial expert slots per layer (default: 64).
+EXL3_CACHE_POLICY selects global-lru (default) or compact precision-lru banks.
 EXL3_DECODE_GRAPHS=1 enables a decode CUDA graph for the default single sequence.
 
 Defaults: localhost:8009, qwen3.8-exl3, context 2048, one sequence, eager,
@@ -37,6 +38,11 @@ python_bin="${EXL3_PYTHON:-python}"
 export VLLM_USE_V2_MODEL_RUNNER=1
 export VLLM_EXL3_MOE_KERNEL=exllamav3
 export VLLM_EXL3_EXPERT_CACHE_ROWS="${EXL3_CACHE_ROWS:-64}"
+export VLLM_EXL3_EXPERT_CACHE_POLICY="${EXL3_CACHE_POLICY:-global-lru}"
+case "$VLLM_EXL3_EXPERT_CACHE_POLICY" in
+  global-lru|precision-lru) ;;
+  *) echo 'EXL3_CACHE_POLICY must be global-lru or precision-lru.' >&2; exit 2 ;;
+esac
 export VLLM_EXL3_NGRAM_TABLE=pinned EXL3_EXPANDABLE_SEGMENTS=0
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}"
