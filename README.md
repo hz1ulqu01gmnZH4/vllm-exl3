@@ -18,6 +18,9 @@ for qualification limits.
 A later matched run improved from 62.42 to 68.74 tokens/s with compact K2/K3
 LRU banks and 160 initial slots per layer, using 3.09 GiB more expert-cache VRAM.
 The tested frequency-admission alternative was slower and was removed.
+An [experimental decode switch](docs/decode-tuning.html) allows comparing reduced
+cooperative-kernel preparation. It remains off by default; the RTX 5090-specific
+HC candidate failed numerical qualification and was not promoted.
 The [launch script](scripts/serve-exl3.sh) uses a 2K context by default; follow the
 [setup guide](docs/setup.html) for the pinned vLLM patch, extension build, and model overlay.
 

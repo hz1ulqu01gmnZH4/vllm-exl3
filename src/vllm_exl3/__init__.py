@@ -113,6 +113,9 @@ def runtime_diagnostics():
         ),
         per_bit_policy_installed=installed,
     )
+    record["optimizations"] = {
+        "coop_decode_fast": exl3._COOP_DECODE_FAST,
+    }
     # Which exllamav3 exl3_moe binding loaded: 30 positional args through 1.4.x, 35 from
     # 1.5.0. None when exllamav3 is not importable here.
     try:

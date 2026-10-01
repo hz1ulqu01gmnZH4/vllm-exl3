@@ -34,6 +34,8 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 import re
+
+from .optimization import coop_decode_fast_enabled
 try:
     import torch
     import torch.nn.functional as F
@@ -109,6 +111,7 @@ EXL3_SUFFIXES = ("trellis", "suh", "svh", "mcg", "mul1")
 SWIGLU_LIMIT_DEFAULT = 10.0
 TEMP_ROWS_FUSED = 2048
 _COOP = os.environ.get("VLLM_EXL3_COOP", "0") == "1"
+_COOP_DECODE_FAST = coop_decode_fast_enabled()
 try:
     FAT_EXPERT_THRESHOLD = max(0, int(os.environ.get("VLLM_EXL3_FAT_THRESHOLD", "256")))
 except (TypeError, ValueError):
@@ -2096,100 +2099,102 @@ def apply_exl3_fused_moe(
 
     local = map_topk_to_local(ids, n_exp, expert_map)
     topk = int(ids.shape[-1])
-    flat_token = torch.arange(tokens, device=x2d.device, dtype=torch.long).repeat_interleave(topk)
     flat_weight = weights.reshape(-1).to(dtype=torch.float16)
-    # scatter_add stays on GPU. torch.bincount can host-stage and break CUDA graphs.
-    expert_count = torch.zeros(n_exp + 1, dtype=torch.long, device=local.device)
-    expert_count.scatter_add_(
-        0, local.long(), torch.ones(local.shape, dtype=torch.long, device=local.device)
-    )
     out = torch.zeros(tokens, hidden, dtype=torch.float32, device=x2d.device)
     xh = x2d.contiguous().half()
+    flags = getattr(layer, "_exl3_codebook_flags", _MCG_CODEBOOK_FLAGS)
+    mcg, mul1 = bool(flags[0]), bool(flags[1])
+    inter_dim = int(temps[2].shape[-1])
+    coop_eligible = (
+        _COOP
+        and not is_mixedk
+        and tokens * topk <= 256
+        and hasattr(exllamav3_ext, "exl3_moe_coop")
+        and all(bool(flags[i]) == mcg and bool(flags[i + 1]) == mul1 for i in range(0, 6, 2))
+        and hidden % 128 == 0
+        and inter_dim % 128 == 0
+    )
+    # With distinct routes per token, an expert receives at most `tokens` rows.
+    # Small cooperative calls need neither per-expert counts nor token sorting.
+    early_coop = _COOP_DECODE_FAST and coop_eligible and tokens <= FAT_EXPERT_THRESHOLD
+    if not early_coop:
+        flat_token = torch.arange(tokens, device=x2d.device, dtype=torch.long).repeat_interleave(topk)
+        # scatter_add stays on GPU. torch.bincount can host-stage and break CUDA graphs.
+        expert_count = torch.zeros(n_exp + 1, dtype=torch.long, device=local.device)
+        expert_count.scatter_add_(
+            0, local.long(), torch.ones(local.shape, dtype=torch.long, device=local.device)
+        )
 
-    counts = expert_count[:n_exp]
+        counts = expert_count[:n_exp]
 
-    if tokens > TEMP_ROWS_FUSED and bool((counts > TEMP_ROWS_FUSED).any().item()):
-        logger.info_once("EXL3 fat-chunk slicing ACTIVE (tokens=%d)" % tokens)
-        # Deep-context prefill chunks can route more than TEMP_ROWS_FUSED rows
-        # to a single expert. The fused kernel covers at most TEMP_ROWS_FUSED
-        # rows per expert, and the old fallback reconstructed whole experts
-        # per chunk, stalling prefill by orders of magnitude past ~160k
-        # context (the ">163k hang"). Within a slice of <= TEMP_ROWS_FUSED
-        # tokens no expert can exceed TEMP_ROWS_FUSED rows (each token adds at
-        # most one row per expert), so re-run the fused path per slice.
-        # Prefill-only: decode batches are at most the largest capture size,
-        # far below TEMP_ROWS_FUSED, and never reach this host sync.
-        for s in range(0, tokens, TEMP_ROWS_FUSED):
-            e = min(s + TEMP_ROWS_FUSED, tokens)
-            out[s:e] = apply_exl3_fused_moe(
-                x2d[s:e], ids[s:e], weights[s:e], layer, inners, expert_map, limit
-            )
-        return out
+        if tokens > TEMP_ROWS_FUSED and bool((counts > TEMP_ROWS_FUSED).any().item()):
+            logger.info_once("EXL3 fat-chunk slicing ACTIVE (tokens=%d)" % tokens)
+            # Deep-context prefill chunks can route more than TEMP_ROWS_FUSED rows
+            # to a single expert. The fused kernel covers at most TEMP_ROWS_FUSED
+            # rows per expert, and the old fallback reconstructed whole experts
+            # per chunk, stalling prefill by orders of magnitude past ~160k
+            # context (the ">163k hang"). Within a slice of <= TEMP_ROWS_FUSED
+            # tokens no expert can exceed TEMP_ROWS_FUSED rows (each token adds at
+            # most one row per expert), so re-run the fused path per slice.
+            # Prefill-only: decode batches are at most the largest capture size,
+            # far below TEMP_ROWS_FUSED, and never reach this host sync.
+            for s in range(0, tokens, TEMP_ROWS_FUSED):
+                e = min(s + TEMP_ROWS_FUSED, tokens)
+                out[s:e] = apply_exl3_fused_moe(
+                    x2d[s:e], ids[s:e], weights[s:e], layer, inners, expert_map, limit
+                )
+            return out
 
-    fat = counts > FAT_EXPERT_THRESHOLD
-    # counts[e] cannot exceed the row count, so with no more rows than the
-    # threshold no expert can be fat. Testing that Python-side first keeps the
-    # device sync below off the decode path, where graph capture forbids it.
-    fat_possible = tokens > FAT_EXPERT_THRESHOLD
-    fat_route = torch.zeros_like(local, dtype=torch.bool)
-    if fat_possible and bool(fat.any().item()):
-        safe_local = local.clamp(min=0, max=max(n_exp - 1, 0))
-        fat_route = (local < n_exp) & fat.index_select(0, safe_local)
+        fat = counts > FAT_EXPERT_THRESHOLD
+        # counts[e] cannot exceed the row count, so with no more rows than the
+        # threshold no expert can be fat. Testing that Python-side first keeps the
+        # device sync below off the decode path, where graph capture forbids it.
+        fat_possible = tokens > FAT_EXPERT_THRESHOLD
+        fat_route = torch.zeros_like(local, dtype=torch.bool)
+        if fat_possible and bool(fat.any().item()):
+            safe_local = local.clamp(min=0, max=max(n_exp - 1, 0))
+            fat_route = (local < n_exp) & fat.index_select(0, safe_local)
 
     # exl3_moe_coop fast path (exllamav3 >= 1.5.0): decode-shaped batches only —
     # the slot scratch is capped at 256, i.e. tokens <= 42 at topk 6, which covers
     # single-stream speculation and light-concurrency traffic. Larger batches and
     # fat routes fall through to the stock path below.
     # Mixed-K layers skip coop and use the mixedk kernel instead.
-    if (
-        _COOP
-        and not is_mixedk
-        and tokens * topk <= 256
-        and hasattr(exllamav3_ext, "exl3_moe_coop")
-        and not (fat_possible and bool(fat.any().item()))
-    ):
-        flags = getattr(layer, "_exl3_codebook_flags", _MCG_CODEBOOK_FLAGS)
-        mcg, mul1 = bool(flags[0]), bool(flags[1])
-        inter_dim = int(temps[2].shape[-1])
-        if (
-            all(bool(flags[i]) == mcg and bool(flags[i + 1]) == mul1 for i in range(0, 6, 2))
-            and hidden % 128 == 0
-            and inter_dim % 128 == 0
-        ):
-            k = int(getattr(layer, "_exl3_k", 4))
-            slots = tokens * topk
-            smax = 4 * slots  # split-k partial rows, per tests/test_moe_coop.py
-            dev = x2d.device
-            sel_c = local.reshape(tokens, topk).to(torch.int64).contiguous()
-            rw_c = flat_weight.reshape(tokens, topk).contiguous()
-            had_g = torch.empty((slots, hidden), dtype=torch.float16, device=dev)
-            had_u = torch.empty_like(had_g)
-            gu_g = torch.empty((smax, 1, inter_dim), dtype=torch.float16, device=dev)
-            gu_u = torch.empty_like(gu_g)
-            act_out = torch.empty_like(gu_g)
-            d_out = torch.empty((smax, 1, hidden), dtype=torch.float32, device=dev)
-            ctr = torch.zeros(
-                smax * (inter_dim // 128) + tokens * (hidden // 128) + 2 * smax + 3,
-                dtype=torch.int32,
-                device=dev,
-            )
-            # Kernel contract: min_expert=-1 disables range filtering and
-            # indexes pointer tables by raw sel. Plugin sentinels are
-            # n_exp (non-local / EP). Pass [0, n_exp) so those routes
-            # contribute zero instead of OOB.
-            exllamav3_ext.exl3_moe_coop(
-                xh, sel_c, rw_c, 0, int(n_exp), hidden,
-                ptrs["gate_trellis"], ptrs["gate_suh"], ptrs["gate_svh"],
-                ptrs["up_trellis"], ptrs["up_suh"], ptrs["up_svh"],
-                ptrs["down_trellis"], ptrs["down_suh"], ptrs["down_svh"],
-                None, None, None,
-                k, k, k, mcg, mul1, MOE_ACT_SILU,
-                float(limit) if (limit is not None and limit > 0) else 0.0,
-                True,
-                had_g, had_u, gu_g, gu_u, act_out, d_out, ctr, out,
-                None, None,
-            )
-            return out
+    if coop_eligible and (early_coop or not (fat_possible and bool(fat.any().item()))):
+        k = int(getattr(layer, "_exl3_k", 4))
+        slots = tokens * topk
+        smax = 4 * slots  # split-k partial rows, per tests/test_moe_coop.py
+        dev = x2d.device
+        sel_c = local.reshape(tokens, topk).to(torch.int64).contiguous()
+        rw_c = flat_weight.reshape(tokens, topk).contiguous()
+        had_g = torch.empty((slots, hidden), dtype=torch.float16, device=dev)
+        had_u = torch.empty_like(had_g)
+        gu_g = torch.empty((smax, 1, inter_dim), dtype=torch.float16, device=dev)
+        gu_u = torch.empty_like(gu_g)
+        act_out = torch.empty_like(gu_g)
+        d_out = torch.empty((smax, 1, hidden), dtype=torch.float32, device=dev)
+        ctr = torch.zeros(
+            smax * (inter_dim // 128) + tokens * (hidden // 128) + 2 * smax + 3,
+            dtype=torch.int32,
+            device=dev,
+        )
+        # Kernel contract: min_expert=-1 disables range filtering and
+        # indexes pointer tables by raw sel. Plugin sentinels are
+        # n_exp (non-local / EP). Pass [0, n_exp) so those routes
+        # contribute zero instead of OOB.
+        exllamav3_ext.exl3_moe_coop(
+            xh, sel_c, rw_c, 0, int(n_exp), hidden,
+            ptrs["gate_trellis"], ptrs["gate_suh"], ptrs["gate_svh"],
+            ptrs["up_trellis"], ptrs["up_suh"], ptrs["up_svh"],
+            ptrs["down_trellis"], ptrs["down_suh"], ptrs["down_svh"],
+            None, None, None,
+            k, k, k, mcg, mul1, MOE_ACT_SILU,
+            float(limit) if (limit is not None and limit > 0) else 0.0,
+            True,
+            had_g, had_u, gu_g, gu_u, act_out, d_out, ctr, out,
+            None, None,
+        )
+        return out
 
     # The standard kernel handles non-fat routes. Fat routes are represented by
     # the invalid sentinel with zero weight here and are dispatched exactly once

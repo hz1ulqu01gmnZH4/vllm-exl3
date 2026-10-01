@@ -12,6 +12,8 @@ PYTHONPATH may select the patched vLLM source and a compatible EXL3 extension.
 EXL3_CACHE_ROWS selects initial expert slots per layer (default: 64).
 EXL3_CACHE_POLICY selects global-lru (default) or compact precision-lru banks.
 EXL3_DECODE_GRAPHS=1 enables a decode CUDA graph for the default single sequence.
+VLLM_EXL3_COOP_DECODE_FAST=1 opts into experimental reduced decode preparation
+when VLLM_EXL3_COOP=1; default 0. Restart the server after changing it.
 
 Defaults: localhost:8009, qwen3.8-exl3, context 2048, one sequence, eager,
 batch 128, BF16 KV with a 1 GiB budget. Trailing vLLM options override defaults.

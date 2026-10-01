@@ -1,0 +1,170 @@
+{
+  "date": "2026-10-01",
+  "gpu": "RTX5090",
+  "baseline_commit": "f157c949e2f051be8f25e89c09e34341caa0b166",
+  "runtime_commit": "e378275a8f20eac9e92212e4a1fee84ec5a31dc7",
+  "checkpoint": "Qwen3.8-Flash-Next-EXL3-2.50bpw",
+  "cooperative_decode": {
+    "switch": "VLLM_EXL3_COOP_DECODE_FAST",
+    "default": "0",
+    "status": "correctness-tested, performance gate failed; experimental opt-in",
+    "micro": {
+      "geomean_latency_ratio": 0.9029249055495221,
+      "worst_ratio": 1.1186324021024174,
+      "gate_pass": false
+    },
+    "samples": 32,
+    "graph_calls_per_interval": 32,
+    "cases": 16,
+    "limitations": [
+      "First timing run overlapped correctness testing and was excluded.",
+      "Microbenchmark pre-replay output comparison is not valid correctness evidence; separate checkpoint pytest checks are.",
+      "No full-model runs: kernel timing failed preregistered gate.",
+      "Default-off setting does not change the existing expert-cache planner optimization."
+    ],
+    "gpu_checkpoint_tests_passed": 8,
+    "static_dispatch_tests_passed": 1,
+    "control_and_registration_tests_passed": 8
+  },
+  "rtx5090_hc": {
+    "status": "rejected, not installed",
+    "micro": {
+      "weighted_m1": {
+        "hot": {
+          "baseline_ms": 0.7764970068819821,
+          "candidate_ms": 0.4917525181081146,
+          "ratio": 0.633296089681972
+        },
+        "cold": {
+          "baseline_ms": 2.247296038083732,
+          "candidate_ms": 1.691744008101523,
+          "ratio": 0.7527909004565646
+        }
+      },
+      "gate_pass": true,
+      "kept": [
+        {
+          "m": 1,
+          "n": 336,
+          "k": 10240,
+          "config": {
+            "num_rows": 1,
+            "block_size": 256,
+            "outputs_per_block": 1,
+            "k_unroll": 1,
+            "vector_width": 8,
+            "static_k": 10240
+          }
+        },
+        {
+          "m": 2,
+          "n": 336,
+          "k": 10240,
+          "config": {
+            "num_rows": 2,
+            "block_size": 256,
+            "outputs_per_block": 1,
+            "k_unroll": 1,
+            "vector_width": 8,
+            "static_k": 10240
+          }
+        },
+        {
+          "m": 4,
+          "n": 336,
+          "k": 10240,
+          "config": {
+            "num_rows": 4,
+            "block_size": 256,
+            "outputs_per_block": 1,
+            "k_unroll": 1,
+            "vector_width": 8,
+            "static_k": 10240
+          }
+        },
+        {
+          "m": 1,
+          "n": 320,
+          "k": 10240,
+          "config": {
+            "num_rows": 1,
+            "block_size": 256,
+            "outputs_per_block": 1,
+            "k_unroll": 1,
+            "vector_width": 8,
+            "static_k": 10240
+          }
+        },
+        {
+          "m": 2,
+          "n": 320,
+          "k": 10240,
+          "config": {
+            "num_rows": 2,
+            "block_size": 128,
+            "outputs_per_block": 2,
+            "k_unroll": 1,
+            "vector_width": 8,
+            "static_k": 10240
+          }
+        },
+        {
+          "m": 4,
+          "n": 320,
+          "k": 10240,
+          "config": {
+            "num_rows": 4,
+            "block_size": 256,
+            "outputs_per_block": 1,
+            "k_unroll": 1,
+            "vector_width": 8,
+            "static_k": 10240
+          }
+        },
+        {
+          "m": 1,
+          "n": 10240,
+          "k": 320,
+          "config": {
+            "num_rows": 1,
+            "block_size": 32,
+            "outputs_per_block": 8,
+            "k_unroll": 1,
+            "vector_width": 2,
+            "static_k": 320
+          }
+        },
+        {
+          "m": 2,
+          "n": 10240,
+          "k": 320,
+          "config": {
+            "num_rows": 2,
+            "block_size": 32,
+            "outputs_per_block": 8,
+            "k_unroll": 1,
+            "vector_width": 2,
+            "static_k": 320
+          }
+        }
+      ]
+    },
+    "real_checkpoint_parity": {
+      "passed": false,
+      "rtol": 0.02,
+      "atol": 0.02,
+      "mismatched": 1,
+      "elements": 1344,
+      "max_abs_difference": 0.0390625,
+      "max_relative_difference": 0.04736328125
+    },
+    "limits": [
+      "Random-input correctness did not establish real-checkpoint parity.",
+      "Numerical disagreement does not prove which GEMM is more accurate.",
+      "No full-model runs or model-quality claim."
+    ]
+  },
+  "full_model_runs": 0,
+  "preregistered_baseline_label": "0a923f0f0bd97f56747b32cac97f8b49b3821656",
+  "provenance_note": "Preregistration named earlier commit0a923f0; the pre-run captured git HEAD and archived source define the actual baseline."
+}

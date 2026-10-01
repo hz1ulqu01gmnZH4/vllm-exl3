@@ -203,3 +203,36 @@ def test_cooperative_decode_matches_standard_experts(real_layers, monkeypatch):
             expected = _apply(refs[i], args)
             monkeypatch.setattr(exl3, "_COOP", True)
             _close(_apply(bound[i], args), expected)
+
+
+def test_early_cooperative_decode_preserves_outputs_and_graph_routes(real_layers, monkeypatch):
+    """Skipping generic preparation must preserve sentinel and replay semantics."""
+    _, refs, _ = real_layers
+    monkeypatch.setattr(exl3, "_COOP", True)
+    for dtype in (torch.float16, torch.bfloat16):
+        for rows in (1, 2, 4, 6):
+            for layer in refs:
+                static = _inputs(rows, 3, dtype=dtype)
+                stream = torch.cuda.Stream()
+                stream.wait_stream(torch.cuda.current_stream())
+                monkeypatch.setattr(exl3, "_COOP_DECODE_FAST", True)
+                with torch.cuda.stream(stream):
+                    for _ in range(2):
+                        _apply(layer, static)
+                torch.cuda.current_stream().wait_stream(stream)
+                graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(graph):
+                    actual = _apply(layer, static)
+                for sentinels in (False, True):
+                    args = _inputs(rows, 6, dtype=dtype)
+                    args[1].add_(torch.arange(rows, device="cuda")[:, None]).remainder_(16)
+                    if sentinels:
+                        args[1][0].fill_(-1)
+                        args[1][-1, -1] = 16  # non-local expert sentinel
+                    monkeypatch.setattr(exl3, "_COOP_DECODE_FAST", False)
+                    expected = _apply(layer, args)
+                    for dst, src in zip(static, args):
+                        dst.copy_(src)
+                    graph.replay()
+                    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+                    assert torch.isfinite(actual).all()

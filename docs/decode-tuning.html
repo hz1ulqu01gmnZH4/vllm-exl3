@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EXL3 decode optimization controls</title>
+<style>
+*{box-sizing:border-box}body{margin:32px auto;max-width:1000px;padding:0 20px;background:#eee;color:#111;font:17px/1.6 system-ui,sans-serif}header,section{border:3px solid #000;background:#fff;padding:24px;margin:0 0 28px;box-shadow:7px 7px 0 #000}h1,h2{line-height:1.2}a{color:inherit}code,pre{font-family:ui-monospace,monospace}pre{padding:16px;border:2px solid #000;background:#eee;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}td,th{border:2px solid #000;padding:10px;text-align:left}th{background:#ddd}
+</style>
+<header><h1>Decode optimization controls</h1>
+<p>The additional cooperative decode optimization is experimental and disabled by default.
+The existing expert cache and fused planner remain available as before.</p></header>
+<section><h2>Explicit opt-in</h2>
+<pre># Set before starting the server. Existing launch scripts preserve these variables.
+export VLLM_EXL3_COOP=1
+export VLLM_EXL3_COOP_DECODE_FAST=1
+
+# To restore general route preparation, restart with:
+export VLLM_EXL3_COOP_DECODE_FAST=0</pre>
+<p>The switch accepts exactly <code>0</code> or <code>1</code>; other values raise an error.
+It is read at import, so changing it requires restarting the server and recapturing graphs.
+<code>vllm_exl3.runtime_diagnostics()</code> reports the selected value under
+<code>optimizations.coop_decode_fast</code>. The optimization only applies when the
+cooperative kernel is enabled and eligible, and the token count cannot exceed the
+large-expert threshold. Other calls use the existing general preparation.</p>
+<p>The change omits unused token indices, expert histograms and large-expert masks
+before small cooperative calls. It preserves routing validation, sentinel handling,
+kernel arithmetic, output initialization and completion counters.</p></section>
+<section><h2>RTX 5090 experiment, 2026-10-01</h2>
+<table><tr><th>Candidate</th><th>Evidence</th><th>Decision</th></tr>
+<tr><td>Reduced cooperative preparation</td><td>9 correctness tests passed, including
+exact old/new outputs through changed-route graphs. Isolated real-expert timing:
+9.71% geometric-mean latency reduction across K2/K3, FP16/BF16 and 1/2/4/6 tokens;
+worst case 11.86% slower.</td><td>Failed the preset 15% reduction and no greater than
+3% regression gate. Retained as an explicit experiment, default off.</td></tr>
+<tr><td>RTX 5090 HC skinny GEMM plans</td><td>Eight shape/row combinations passed
+random-input checks and timing selection. Weighted one-token projection time fell
+36.67% with warm cache and 24.72% after cache eviction. Real-checkpoint parity then
+failed: 1 of 1344 projected values exceeded rtol=0.02, atol=0.02; absolute difference
+0.0390625.</td><td>Rejected. The prototype and its <code>VLLM_EXL3_GPU_PROFILE=rtx5090</code>
+control are not installed by this release.</td></tr></table>
+<p>No full-model benchmarks were run for these candidates because they failed earlier gates.
+Kernel timings do not establish a serving throughput gain or quality equivalence. The HC
+comparison shows a numerical disagreement; it does not establish which implementation is
+more accurate. No tolerance was relaxed to accept the candidate.</p>
+<p>The first cooperative timing run overlapped correctness testing and was excluded.
+The accepted timing result comes from one isolated run. Correctness evidence comes from
+the checkpoint pytest suite, not the microbenchmark's pre-replay output comparison.</p>
+<p><a href="validation/switchable-decode-optimization.json">Recorded results and limits</a> ·
+<a href="expert-cache.html">Expert-cache setup</a></p></section>
+</html>
