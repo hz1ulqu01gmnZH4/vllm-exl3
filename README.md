@@ -2,6 +2,11 @@
 
 # vllm-exl3
 
+**Setup: [Qwen EXL3 on RTX 5090](docs/setup.html)** — exact vLLM/PyTorch/CUDA
+versions, installation, model overlay, first launch and optional faster decode.
+Use vLLM `0.29.1rc1.dev423+ge378275a8` (commit `e378275a8`) with this branch's
+cache patch for that recipe; the upstream 0.30.0 audit describes a separate target.
+
 Local development: [EXL3 GPU expert cache](docs/expert-cache.html)
 adds packed K2/K3 caching, shared prefill staging, and direct host loading.
 A full Qwen3.8 text-model generation passed on an RTX 5090 with the local vLLM
@@ -14,7 +19,7 @@ A later matched run improved from 62.42 to 68.74 tokens/s with compact K2/K3
 LRU banks and 160 initial slots per layer, using 3.09 GiB more expert-cache VRAM.
 The tested frequency-admission alternative was slower and was removed.
 The [launch script](scripts/serve-exl3.sh) uses a 2K context by default; follow the
-linked setup guide for the pinned vLLM patch, extension build, and model overlay.
+[setup guide](docs/setup.html) for the pinned vLLM patch, extension build, and model overlay.
 
 [![Follow on X](https://img.shields.io/badge/Follow-%40ViC305-black?logo=x)](https://x.com/ViC305) [![Follow on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Follow-vcruz305-yellow)](https://huggingface.co/vcruz305)
 

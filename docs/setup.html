@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Qwen EXL3 setup — vLLM versions, installation and serving</title>
+<style>
+*{box-sizing:border-box}body{margin:32px auto;max-width:1080px;padding:0 20px;background:#eee;color:#111;font:17px/1.6 system-ui,sans-serif}header,nav,section{border:3px solid #000;background:#fff;padding:24px;margin:0 0 28px;box-shadow:7px 7px 0 #000}h1,h2,h3{line-height:1.2}a{color:inherit;text-underline-offset:3px}a:focus-visible{outline:3px solid #000;outline-offset:4px}code,pre{font-family:ui-monospace,monospace}code{overflow-wrap:anywhere}pre{padding:16px;border:2px solid #000;background:#eee;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}table{border-collapse:collapse;width:100%}td,th{border:2px solid #000;padding:10px;text-align:left;vertical-align:top}th{background:#ddd}.table-wrap{overflow-x:auto}.note{border-left:6px solid #000;padding-left:16px}@media(max-width:600px){body{padding:0 12px}header,nav,section{padding:16px;box-shadow:4px 4px 0 #000}td,th{padding:7px}}@media print{body{margin:0;max-width:none;background:#fff}header,nav,section{box-shadow:none}pre{white-space:pre-wrap}}
+</style>
+</head>
+<body>
+<header>
+<p><a href="../README.md">vllm-exl3</a> / Setup guide · 1 October 2026</p>
+<h1>Run Qwen EXL3 on an RTX 5090</h1>
+<p><strong>Use vLLM <code>0.29.1rc1.dev423+ge378275a8</code>, based on commit
+<code>e378275a8f20eac9e92212e4a1fee84ec5a31dc7</code>, with this branch's
+<a href="../patches/vllm-e378275-exl3-cache.patch">EXL3 cache patch</a>.</strong>
+The patch connects host expert loading, Qwen PLE embeddings, output heads and
+decode graph capture to the plugin. Installing the plugin by itself is insufficient.</p>
+<p>This recipe covers one GPU, text-only Qwen3.8-Flash-Next EXL3 serving with
+packed experts in host RAM and a GPU expert cache. Start with the small eager
+profile, then enable the measured decode profile after a successful response.</p>
+</header>
+<nav aria-label="Guide contents">
+<a href="#versions">Versions</a> · <a href="#requirements">Hardware</a> ·
+<a href="#workspace">Environment</a> · <a href="#vllm">vLLM</a> ·
+<a href="#exllama">ExLlamaV3</a> · <a href="#model">Model</a> ·
+<a href="#serve">Serve</a> · <a href="#fast">Faster decode</a> ·
+<a href="#troubleshooting">Troubleshooting</a>
+</nav>
+<main>
+<section id="versions">
+<h2>1. Choose the matching versions</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Component</th><th>Recorded working stack</th><th>Use it this way</th></tr></thead>
+<tbody>
+<tr><td>vLLM</td><td><code>0.29.1rc1.dev423+ge378275a8</code></td><td>Pin both the source and native wheel to <code>e378275a8f20eac9e92212e4a1fee84ec5a31dc7</code>; apply the patch below.</td></tr>
+<tr><td>Python</td><td><code>3.12.8</code></td><td>Use a fresh Python 3.12 environment.</td></tr>
+<tr><td>PyTorch / CUDA runtime</td><td><code>2.13.0+cu130</code> / <code>13.0</code></td><td>Keep this build for vLLM and the ExLlamaV3 extension.</td></tr>
+<tr><td>CUDA compiler</td><td><code>13.4</code></td><td>The recorded ExLlamaV3 build used this toolkit, targeting <code>12.0</code> (SM120).</td></tr>
+<tr><td>ExLlamaV3</td><td><code>1.5.2</code></td><td>Build native sources against the active PyTorch. A PyTorch 2.11 binary failed to import in this environment.</td></tr>
+<tr><td>Python libraries</td><td>Triton <code>3.7.1</code>, Transformers <code>5.17.0</code>, safetensors <code>0.8.0</code></td><td>Pin these alongside PyTorch.</td></tr>
+<tr><td>vllm-exl3</td><td>This fork's <code>work/exl3-expert-cache</code> branch</td><td>Package version <code>0.5.0</code> alone does not identify the cache implementation. This guide was written against code at <code>0a923f0</code>.</td></tr>
+</tbody></table></div>
+<p>The upstream <a href="VLLM_COMPATIBILITY.md">vLLM 0.30.0 audit</a> is a source
+compatibility report, not qualification of this cache recipe. The older
+<code>0.28.1rc1.dev324</code> results belong to the DGX Spark recipe. For Spark,
+follow the <a href="https://github.com/vcruz305/Qwen3.8-Flash-Next-EXL3-DGX-Spark-recipe">Qwen
+Spark instructions</a>; the x86_64 wheel and SM120 build below are specific to this setup.</p>
+<p class="note">The full-model results came from the local patched vLLM runtime.
+The portable patch was checked against the clean pinned source, but a fresh
+installation using only that patch has not had a separate full-model qualification.
+The commands below assemble that portable installation; they are not a claim
+that a clean-machine rebuild was performed for this documentation update.</p>
+</section>
+<section id="requirements">
+<h2>2. Have the hardware and checkpoint ready</h2>
+<ul>
+<li>Linux x86_64, or WSL2 with working NVIDIA GPU access. The recorded GPU is an RTX 5090 with 32 GB VRAM.</li>
+<li>Enough free host RAM for about <strong>54 GiB of pinned expert and PLE data</strong>, plus model loading and runtime overhead. Plan for a host with substantial headroom, such as 96–128 GiB RAM; 54 GiB is not the total requirement. WSL must have access to that memory.</li>
+<li>A complete local <code>Qwen3.8-Flash-Next-EXL3-2.50bpw</code> checkpoint with its tokenizer and configuration. The recorded pack uses K2/K3 target experts and a K3 PLE table. Other packs need separate validation.</li>
+<li>Git, <code>uv</code>, a C++ compiler, and CUDA toolkit 13.4 available. Set <code>CUDA_HOME</code> to the toolkit that contains <code>bin/nvcc</code>. PyTorch's CUDA runtime wheel does not supply the complete compiler toolchain.</li>
+<li>Disk space for the existing checkpoint, downloaded wheels, source trees and native build output. Keep the source checkpoint in place: the serving overlay links to it.</li>
+</ul>
+<p>These instructions serve existing EXL3 weights. The plugin and overlay helper do not quantize a model.</p>
+</section>
+<section id="workspace">
+<h2>3. Create an isolated workspace</h2>
+<p>Run the shell blocks in order in the same Bash session. Use a new workspace;
+change the paths below to suit your machine. Keep the source trees and runtime
+directory after installation because editable packages and symlinks refer to them.</p>
+<pre data-shell>export EXL3_WORKSPACE="$HOME/qwen-exl3-setup"
+mkdir -p "$EXL3_WORKSPACE"
+cd "$EXL3_WORKSPACE"
+uv venv --python 3.12.8 .venv
+source .venv/bin/activate
+
+git clone --branch work/exl3-expert-cache --single-branch \
+  https://github.com/hz1ulqu01gmnZH4/vllm-exl3.git
+export EXL3_REPO="$EXL3_WORKSPACE/vllm-exl3"
+export VLLM_SOURCE="$EXL3_WORKSPACE/vllm"
+export EXL3_RUNTIME="$EXL3_WORKSPACE/exl3-runtime"
+
+# Adjust this path to your CUDA 13.4 toolkit.
+export CUDA_HOME=/opt/cuda
+export PATH="$CUDA_HOME/bin:$PATH"
+export MAX_JOBS=4
+nvcc --version
+nvidia-smi
+
+cat &gt; "$EXL3_WORKSPACE/runtime-constraints.txt" &lt;&lt;'EOF'
+torch==2.13.0
+triton==3.7.1
+transformers==5.17.0
+safetensors==0.8.0
+EOF</pre>
+<p>The constraints pin the core stack; they are not a complete dependency lock.
+If dependency resolution fails, resolve it explicitly rather than dropping a pin
+or letting an installer replace PyTorch after native extensions have been built.</p>
+</section>
+<section id="vllm">
+<h2>4. Install the patched vLLM source and matching binaries</h2>
+<p>The supplied patch changes Python code. vLLM's
+<a href="https://docs.vllm.ai/en/latest/getting_started/installation/gpu/#python-only-build">editable
+installation with precompiled binaries</a> can therefore pair the patched source
+with the native wheel from the same commit. Explicitly select the recorded wheel
+instead of letting the installer choose a newer nightly.</p>
+<pre data-shell>git clone https://github.com/vllm-project/vllm.git "$VLLM_SOURCE"
+git -C "$VLLM_SOURCE" checkout --detach e378275a8f20eac9e92212e4a1fee84ec5a31dc7
+git -C "$VLLM_SOURCE" apply "$EXL3_REPO/patches/vllm-e378275-exl3-cache.patch"
+
+export VLLM_WHEEL='https://wheels.vllm.ai/e378275a8f20eac9e92212e4a1fee84ec5a31dc7/vllm-0.29.1rc1.dev423%2Bge378275a8-cp38-abi3-manylinux_2_28_x86_64.whl'
+VLLM_USE_PRECOMPILED=1 VLLM_PRECOMPILED_WHEEL_LOCATION="$VLLM_WHEEL" \
+  uv pip install --editable "$VLLM_SOURCE" --torch-backend=cu130 \
+  --constraint "$EXL3_WORKSPACE/runtime-constraints.txt" \
+  'torch==2.13.0' 'triton==3.7.1' 'transformers==5.17.0' 'safetensors==0.8.0'
+
+VLLM_EXL3_NO_CUDA=1 uv pip install --no-deps --editable "$EXL3_REPO"</pre>
+<p><code>VLLM_EXL3_NO_CUDA=1</code> skips the plugin's optional
+<code>vllm_exl3_c</code> build. This profile still requires CUDA and uses
+ExLlamaV3's compiled kernels, built in the next step. It does not require the
+separate NVFP4 expert-pool extension.</p>
+<p>Apply only <code>patches/vllm-e378275-exl3-cache.patch</code> for this recipe.
+The older <code>tools/patch_vllm_qwen4_exp/</code> instructions belong to other
+runtime recipes. A failed patch application usually means a different checkout
+or an already patched tree.</p>
+</section>
+<section id="exllama">
+<h2>5. Build ExLlamaV3 against this PyTorch</h2>
+<p>Fetch the <a href="https://github.com/turboderp-org/exllamav3/tree/v1.5.2">v1.5.2
+sources</a> and install their Python dependencies. Let the repository helper
+build the extension. Its first argument is the Python package directory inside
+the clone, not the clone root; its output directory must not already exist.</p>
+<pre data-shell>git clone --branch v1.5.2 --depth 1 \
+  https://github.com/turboderp-org/exllamav3.git "$EXL3_WORKSPACE/exllamav3"
+uv pip install --requirement "$EXL3_WORKSPACE/exllamav3/requirements.txt" \
+  --constraint "$EXL3_WORKSPACE/runtime-constraints.txt" --torch-backend=cu130
+
+python "$EXL3_REPO/scripts/build-exllamav3.py" \
+  "$EXL3_WORKSPACE/exllamav3/exllamav3" "$EXL3_RUNTIME" --arch 12.0 --jobs 4
+export PYTHONPATH="$EXL3_RUNTIME"
+export EXL3_EXPANDABLE_SEGMENTS=0</pre>
+<p>Do not install an ExLlamaV3 binary wheel into this environment before running
+the helper: it refuses an existing <code>exllamav3_ext</code>. A binary from a
+different PyTorch build can fail with undefined symbols even when its ExLlamaV3
+version matches. Rebuild into a new runtime directory if the PyTorch build changes.</p>
+<p>Check imports and the active paths before loading weights:</p>
+<pre data-shell>python - &lt;&lt;'PY'
+from importlib.metadata import version
+import torch
+import vllm
+import vllm._C
+import vllm_exl3
+from glm53_exl3_plugin.exl3 import Exl3Config
+from exllamav3.ext import exllamav3_ext
+
+print("vLLM:", version("vllm"), vllm.__file__)
+print("PyTorch / CUDA:", torch.__version__, torch.version.cuda)
+print("GPU:", torch.cuda.get_device_name(0), torch.cuda.get_device_capability(0))
+print("Plugin:", vllm_exl3.__file__)
+print("ExLlamaV3 extension:", exllamav3_ext.__file__)
+for name in ("triton", "transformers", "safetensors"):
+    print(name, version(name))
+for name in ("exl3_moe", "pinned_cuda_view", "ngram_dequant"):
+    assert callable(getattr(exllamav3_ext, name, None)), name
+PY</pre>
+<p>vLLM should resolve inside <code>$VLLM_SOURCE/vllm</code>, the plugin inside
+this checkout, and the extension inside the new runtime build. Editable vLLM
+version suffixes may differ after patching; the checked-out commit and loaded
+paths identify the source. Imports alone do not establish serving correctness.</p>
+</section>
+<section id="model">
+<h2>6. Prepare the serving overlay</h2>
+<p>The recorded checkpoint source is
+<a href="https://huggingface.co/r0b0tlab/Qwen3.8-Flash-Next-EXL3-2.50bpw">r0b0tlab/Qwen3.8-Flash-Next-EXL3-2.50bpw</a>,
+revision <code>61a1a139ef2411ed6ed5717acfaff288511a1b08</code>.
+If you already have the complete checkpoint, set <code>NATIVE_MODEL</code> to
+its directory and skip the download. Otherwise, download the existing pack
+(about 65 GB) before preparing the overlay:</p>
+<pre data-shell>export NATIVE_MODEL="$EXL3_WORKSPACE/Qwen3.8-Flash-Next-EXL3-2.50bpw"
+hf download r0b0tlab/Qwen3.8-Flash-Next-EXL3-2.50bpw \
+  --revision 61a1a139ef2411ed6ed5717acfaff288511a1b08 \
+  --local-dir "$NATIVE_MODEL"</pre>
+<pre data-shell># If reusing an existing checkpoint instead of the download above:
+# export NATIVE_MODEL=/path/to/Qwen3.8-Flash-Next-EXL3-2.50bpw
+export MODEL_OVERLAY="$EXL3_WORKSPACE/Qwen3.8-Flash-Next-EXL3-cache"
+python "$EXL3_REPO/tools/exl3_pack_tools/prepare_qwen_overlay.py" \
+  "$NATIVE_MODEL" "$MODEL_OVERLAY"</pre>
+<p>The helper scans the existing pack, writes the EXL3 serving configuration,
+rebuilds the safetensors index and links the original weights and tokenizer.
+It preserves the source checkpoint and rejects an existing destination. Keep
+the generated <code>quantization_config.quant_method</code> set to
+<code>exl3</code>; a conflicting checkpoint declaration can override the CLI option.</p>
+</section>
+<section id="serve">
+<h2>7. Resolve the configuration, then serve</h2>
+<p>On WSL2, enable vLLM's pinned-memory support in the serving shell:</p>
+<pre data-shell># WSL2 only
+export VLLM_WSL2_ENABLE_PIN_MEMORY=1</pre>
+<pre data-shell>cd "$EXL3_REPO"
+scripts/serve-exl3.sh --check-config "$MODEL_OVERLAY"
+scripts/serve-exl3.sh "$MODEL_OVERLAY"</pre>
+<p>The first command resolves configuration without loading weights. Expect
+<code>quantization: exl3</code>, <code>enforce_eager: true</code>, context
+<code>2048</code>, one sequence and <code>1073741824</code> KV bytes. The second
+starts the server. The initial recorded startup took about nine minutes; wait
+for it to report readiness before sending a request.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Default</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>API / model name</td><td><code>http://127.0.0.1:8009/v1</code> / <code>qwen3.8-exl3</code></td></tr>
+<tr><td>Execution</td><td>TP=1, text only, eager, BF16, one active sequence, no MTP</td></tr>
+<tr><td>Context / prefill batch / KV budget</td><td>2,048 total tokens / 128 tokens / 1 GiB BF16 KV</td></tr>
+<tr><td>Expert cache</td><td>64 initial slots per layer, <code>global-lru</code>; packed host experts and pinned PLE</td></tr>
+</tbody></table></div>
+<p>From a second terminal:</p>
+<pre data-shell>curl --fail-with-body http://127.0.0.1:8009/health
+curl --fail-with-body http://127.0.0.1:8009/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.8-exl3","messages":[{"role":"user","content":"What is the capital of Japan?"}],"max_tokens":32,"temperature":0}'</pre>
+<p>A successful setup returns a completion, not just a successful import or config
+check. The recorded eager smoke response was “The capital of Japan is Tokyo.”
+Stop the foreground server with Ctrl+C before changing profiles.</p>
+<p>For subsequent sessions, reactivate <code>$EXL3_WORKSPACE/.venv</code> and
+restore <code>CUDA_HOME</code>, <code>PATH</code>, <code>PYTHONPATH</code> to the
+runtime, and your model paths. The launcher sets the EXL3 cache and PLE variables
+it needs. It defaults to offline Hugging Face access, so complete all downloads
+before launching. <code>EXL3_PYTHON</code> can select an explicit Python executable.</p>
+</section>
+<section id="fast">
+<h2>8. Optional: the measured faster decode profile</h2>
+<p>After the eager smoke test, this profile enables compact K2/K3 cache banks,
+cooperative kernels, decode CUDA graphs and three MTP draft tokens. It uses
+one active request, a resident K4 draft layer and 4.5 GiB of KV. The checkpoint
+must contain the MTP weights.</p>
+<pre data-shell>EXL3_CACHE_POLICY=precision-lru EXL3_CACHE_ROWS=160 \
+VLLM_EXL3_COOP=1 EXL3_DECODE_GRAPHS=1 \
+scripts/serve-exl3.sh "$MODEL_OVERLAY" \
+  --max-model-len 131072 --max-num-seqs 1 --max-num-batched-tokens 2048 \
+  --kv-cache-memory-bytes 4831838208 \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
+  --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4]}'</pre>
+<p>The <a href="validation/strata-cache-optimization.json">recorded comparison</a>
+measured 68.74 decode tokens/s across two short prompts, using 11.15 GiB for expert
+banks. This is a workload result, not a guaranteed rate. Prefill remains eager.
+The configured 131,072-token limit does not establish full-context operation;
+full 131K input, 32K output and broad model quality remain unqualified.</p>
+<p><a href="../scripts/serve-exl3-131k.sh">serve-exl3-131k.sh</a> is a separate
+local-workspace profile using FP8 KV, four sequences and no MTP. It expects the
+original workspace's <code>supervise.py</code> and runtime paths. Use the portable
+<code>serve-exl3.sh</code> command above for this fresh setup. Four simultaneous
+full-length contexts have not been validated.</p>
+<p>See <a href="expert-cache.html">the expert-cache implementation and validation
+record</a> for cache sizing, graph limits and additional performance results.</p>
+</section>
+<section id="troubleshooting">
+<h2>When setup fails</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Symptom</th><th>Check or action</th></tr></thead>
+<tbody>
+<tr><td>Undefined symbols in a CUDA extension</td><td>Check the printed PyTorch version and module paths. Rebuild ExLlamaV3 in a new output directory against that PyTorch. vLLM binaries must match their source commit and PyTorch build too.</td></tr>
+<tr><td>PLE rejects <code>Exl3Config</code>, or experts fill VRAM during load</td><td>Confirm Python imports the patched vLLM checkout and the complete cache patch is applied. The stock wheel alone lacks this integration.</td></tr>
+<tr><td>ExLlamaV3 build helper refuses to run</td><td>Use the package directory containing <code>ext.py</code>, an unused output directory and an environment without a preinstalled <code>exllamav3_ext</code>. Make sure <code>nvcc</code> comes from <code>CUDA_HOME</code>.</td></tr>
+<tr><td>Quantization mismatch or missing tensors</td><td>Point the launcher at the generated overlay, verify that the native checkpoint is complete, and inspect its derived EXL3 config. Do not reuse the NVFP4 checkpoint configuration.</td></tr>
+<tr><td>Host allocation failure or process killed during loading</td><td>Allow more than the roughly 54 GiB pinned payload plus loading overhead. Check available memory inside WSL as well as on the host. Reducing GPU cache rows does not eliminate the pinned source weights.</td></tr>
+<tr><td>CUDA OOM or KV capacity rejection</td><td>Return to the small eager profile, free competing GPU allocations, then size cache rows and KV together. Context includes input plus output. The measured 131K MTP profile needed 4.5 GiB KV; 4 GiB was rejected.</td></tr>
+<tr><td>Graph or routing-capacity error after changing concurrency</td><td>Stay within the tested one-sequence profile. The cache supports at most 64 routing lanes: sequences × (1 + draft tokens) × top-k. Qwen's top-k is 10; graph size 4 matches one request with MTP3.</td></tr>
+<tr><td>A client still cannot use 131K context</td><td>The server's context and memory settings are authoritative. Increasing a client's advertised context or output limit does not resize the server.</td></tr>
+</tbody></table></div>
+</section>
+</main>
+</body>
+</html>
