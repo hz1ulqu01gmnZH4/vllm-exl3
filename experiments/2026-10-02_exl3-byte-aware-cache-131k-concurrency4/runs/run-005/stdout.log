@@ -1,0 +1,114 @@
+{
+  "verdict": "REFUTED_AT_OFFLINE_GATE",
+  "selected": "baseline",
+  "deployment_changed": false,
+  "mtp_enabled": false,
+  "baseline": {
+    "recorded_steps": 511,
+    "steady_four_steps": 319,
+    "steady_four_elapsed_s": 11.696812358000898,
+    "steady_four_aggregate_tok_s": 108.7475767814572,
+    "steady_four_per_request_tok_s": 27.1868941953643,
+    "min_computed_in_steady": 130560,
+    "max_computed_in_steady": 131070,
+    "gpu_peak_allocated_bytes": 28844213248,
+    "gpu_peak_reserved_bytes": 29735518208,
+    "prompt_tokens_each": 130560,
+    "output_tokens_each": 512,
+    "total_tokens_each": 131072,
+    "completed_requests": 4,
+    "full_generation_wall_s": 504.0216230270016,
+    "bank_bytes": 11970048000,
+    "kv_bytes": 8589934592,
+    "trace_buffer_bytes": 8257536,
+    "steady_copy_MiB_per_step": 398.6082645045552,
+    "steady_copy_MiB_per_output_token": 99.6520661261388,
+    "steady_unique_experts_per_step": 1691.2789968652037,
+    "steady_distinct_misses_per_step": 263.42006269592474,
+    "steady_unique_expert_hit_fraction": 0.8442480139680233
+  },
+  "candidate_comparison": [
+    {
+      "label": "baseline",
+      "train_transfer_change_percent": -0.0,
+      "heldout_transfer_change_percent": -0.0,
+      "bank_bytes": 11970048000,
+      "pool_rows": {
+        "1248000": 4000,
+        "1862400": 3680
+      }
+    },
+    {
+      "label": "k3_shift_-0.2",
+      "train_transfer_change_percent": 31.70755668778511,
+      "heldout_transfer_change_percent": 24.39862700959152,
+      "bank_bytes": 11969164800,
+      "pool_rows": {
+        "1248000": 5899,
+        "1862400": 2407
+      }
+    },
+    {
+      "label": "k3_shift_-0.1",
+      "train_transfer_change_percent": 7.267628432156359,
+      "heldout_transfer_change_percent": 5.42953822635841,
+      "bank_bytes": 11969299200,
+      "pool_rows": {
+        "1248000": 4950,
+        "1862400": 3043
+      }
+    },
+    {
+      "label": "k3_shift_+0.1",
+      "train_transfer_change_percent": 4.640502062773866,
+      "heldout_transfer_change_percent": 2.913209555757934,
+      "bank_bytes": 11968934400,
+      "pool_rows": {
+        "1248000": 3050,
+        "1862400": 4316
+      }
+    },
+    {
+      "label": "k3_shift_+0.2",
+      "train_transfer_change_percent": 29.54185971166745,
+      "heldout_transfer_change_percent": 19.515780437293827,
+      "bank_bytes": 11969068800,
+      "pool_rows": {
+        "1248000": 2101,
+        "1862400": 4952
+      }
+    },
+    {
+      "label": "admit_after_two",
+      "train_transfer_change_percent": 11.074089860317748,
+      "heldout_transfer_change_percent": -2.191472713695364,
+      "bank_bytes": 11970048000,
+      "pool_rows": {
+        "1248000": 4000,
+        "1862400": 3680
+      }
+    },
+    {
+      "label": "protect_one_forward",
+      "train_transfer_change_percent": 1.699555662865504,
+      "heldout_transfer_change_percent": -0.000892535723739929,
+      "bank_bytes": 11970048000,
+      "pool_rows": {
+        "1248000": 4000,
+        "1862400": 3680
+      }
+    }
+  ],
+  "offline_gate_percent_reduction": 20,
+  "next_action": "Retain precision-lru 160 and existing admission controls; no full-model candidate run.",
+  "limitations": [
+    "Four synthetic repeated source/documentation prompts, not the user's actual workload corpus.",
+    "One completed full-model run; speed is a diagnostic baseline, not a confidence estimate.",
+    "319 steady four-request decode steps at near-full context; no 32K-output endurance test.",
+    "GPU routing instrumentation adds one small kernel per cached layer and a 7.875 MiB trace buffer.",
+    "Candidate byte counts come from frozen-routing replay, not live candidate serving speed.",
+    "Global LRU baseline replay matched every observed miss count across all 48 layers and 511 recorded steps.",
+    "Initial startup failed before requests due callable RPC serialization; the single allowed correction used named RPC methods.",
+    "Cache budget fixed; larger cache capacity and other optimization families were not tested."
+  ]
+}

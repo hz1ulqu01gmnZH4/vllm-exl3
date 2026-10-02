@@ -1,0 +1,1 @@
+{"run":"run-005","t":"2026-10-02T09:16:25Z","command":"bash experiments/2026-10-02_exl3-decode-profile-and-strata-comparison/config/run_profile.sh profile_events.py","exit_code":0,"duration_s":165}

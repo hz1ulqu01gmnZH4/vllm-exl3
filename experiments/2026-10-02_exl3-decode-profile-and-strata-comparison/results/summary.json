@@ -1,0 +1,584 @@
+{
+  "unprofiled_decode_rates_tok_s": [
+    66.67076875643643,
+    67.41956021904008
+  ],
+  "geomean_decode_tok_s": 67.04411912333741,
+  "unprofiled_decode_ms_per_token": [
+    14.999077086589908,
+    14.832490700786094
+  ],
+  "torch_trace_categories": {
+    "uncategorized": 10,
+    "user_annotation": 12,
+    "cpu_op": 30634,
+    "Trace": 1
+  },
+  "torch_cuda_kernel_events": 0,
+  "scope": "current launcher, single active request, no MTP, 34/39 prompt tokens, 128 output tokens",
+  "cuda_events": {
+    "steps": 12,
+    "layers_per_step": 48,
+    "mean_model_step_ms": 19.798674901326496,
+    "median_model_step_ms": 19.430224418640137,
+    "min_model_step_ms": 15.552160263061523,
+    "max_model_step_ms": 25.23219108581543,
+    "phases": {
+      "plan": {
+        "mean_ms_per_step": 0.6014293323969468,
+        "pct_of_model_step": 3.037725178045383
+      },
+      "route_assert": {
+        "mean_ms_per_step": 0.3415359992456312,
+        "pct_of_model_step": 1.7250447363159063
+      },
+      "copy_misses": {
+        "mean_ms_per_step": 7.554205359716434,
+        "pct_of_model_step": 38.155105820795654
+      },
+      "pointers": {
+        "mean_ms_per_step": 0.21115466641883054,
+        "pct_of_model_step": 1.0665090844270761
+      },
+      "expert_compute": {
+        "mean_ms_per_step": 2.854018662124872,
+        "pct_of_model_step": 14.415200392697265
+      },
+      "rest_of_model_step": {
+        "mean_ms_per_step": 8.236330881423783,
+        "pct_of_model_step": 41.60041478771872
+      }
+    },
+    "misses_per_step": [
+      200,
+      194,
+      61,
+      189,
+      157,
+      93,
+      55,
+      123,
+      96,
+      108,
+      77,
+      128
+    ],
+    "copy_bytes_per_step": [
+      306739200,
+      302937600,
+      98860800,
+      288710400,
+      242630400,
+      149856000,
+      89529600,
+      191596800,
+      146227200,
+      167347200,
+      119443200,
+      207667200
+    ],
+    "method": "external CUDA timing events retained in decode graphs; synchronization and counters read after each measured execute_model; includes marker overhead, excludes sampling and frontend",
+    "effective_copy_GB_s": 25.49954506495317,
+    "hit_fraction": 0.7428819444444444,
+    "mean_copy_MiB_per_step": 183.70513916015625,
+    "by_layer": [
+      {
+        "layer": 0,
+        "bits": 3,
+        "mean_copies": 2.8333333333333335,
+        "plan": 0.01465066677580277,
+        "route_assert": 0.007549333347318073,
+        "copy_misses": 0.20160266526121026,
+        "pointers": 0.002800000016577542,
+        "expert_compute": 0.05907199997454882
+      },
+      {
+        "layer": 1,
+        "bits": 3,
+        "mean_copies": 3.1666666666666665,
+        "plan": 0.013890666499113044,
+        "route_assert": 0.006847999951181312,
+        "copy_misses": 0.2241706697968766,
+        "pointers": 0.002874666689118991,
+        "expert_compute": 0.05796800026049217
+      },
+      {
+        "layer": 2,
+        "bits": 3,
+        "mean_copies": 2.5833333333333335,
+        "plan": 0.013245333141336838,
+        "route_assert": 0.006853333247515063,
+        "copy_misses": 0.18421599951883158,
+        "pointers": 0.004013333353213966,
+        "expert_compute": 0.05949333310127258
+      },
+      {
+        "layer": 3,
+        "bits": 3,
+        "mean_copies": 2.4166666666666665,
+        "plan": 0.011957333345587054,
+        "route_assert": 0.00662399991415441,
+        "copy_misses": 0.17183200120537853,
+        "pointers": 0.004095999989658594,
+        "expert_compute": 0.058746666026612125
+      },
+      {
+        "layer": 4,
+        "bits": 3,
+        "mean_copies": 2.1666666666666665,
+        "plan": 0.011669333403309187,
+        "route_assert": 0.00671199996334811,
+        "copy_misses": 0.1545813309494406,
+        "pointers": 0.0025013334040219584,
+        "expert_compute": 0.058255999659498535
+      },
+      {
+        "layer": 5,
+        "bits": 3,
+        "mean_copies": 3.0833333333333335,
+        "plan": 0.01342666638083756,
+        "route_assert": 0.006701333137849967,
+        "copy_misses": 0.2370239986727635,
+        "pointers": 0.0029039999935775995,
+        "expert_compute": 0.082869332904617
+      },
+      {
+        "layer": 6,
+        "bits": 3,
+        "mean_copies": 2.4166666666666665,
+        "plan": 0.012538666604086757,
+        "route_assert": 0.006735999835655093,
+        "copy_misses": 0.1712640019832179,
+        "pointers": 0.003551999960715572,
+        "expert_compute": 0.08342399913817644
+      },
+      {
+        "layer": 7,
+        "bits": 3,
+        "mean_copies": 2.8333333333333335,
+        "plan": 0.013005333176503578,
+        "route_assert": 0.007112000021152198,
+        "copy_misses": 0.20065600176652273,
+        "pointers": 0.009405333238343397,
+        "expert_compute": 0.05882666725665331
+      },
+      {
+        "layer": 8,
+        "bits": 3,
+        "mean_copies": 2.25,
+        "plan": 0.012818666795889536,
+        "route_assert": 0.0074853333256517844,
+        "copy_misses": 0.1603440015266339,
+        "pointers": 0.004226666603547831,
+        "expert_compute": 0.05994666740298271
+      },
+      {
+        "layer": 9,
+        "bits": 3,
+        "mean_copies": 2.3333333333333335,
+        "plan": 0.01266933341200153,
+        "route_assert": 0.0064586666800702614,
+        "copy_misses": 0.16638133364419141,
+        "pointers": 0.004088000006352861,
+        "expert_compute": 0.06045066720495621
+      },
+      {
+        "layer": 10,
+        "bits": 3,
+        "mean_copies": 2.75,
+        "plan": 0.012957333315474292,
+        "route_assert": 0.006776000062624614,
+        "copy_misses": 0.19483467117728046,
+        "pointers": 0.0041573333243529005,
+        "expert_compute": 0.05905599985271692
+      },
+      {
+        "layer": 11,
+        "bits": 3,
+        "mean_copies": 2.1666666666666665,
+        "plan": 0.011832000028031567,
+        "route_assert": 0.006573333327348034,
+        "copy_misses": 0.15463733517875275,
+        "pointers": 0.003997333386602501,
+        "expert_compute": 0.06006133401145538
+      },
+      {
+        "layer": 12,
+        "bits": 2,
+        "mean_copies": 2,
+        "plan": 0.012053333261671165,
+        "route_assert": 0.006802666699513793,
+        "copy_misses": 0.09724000100201617,
+        "pointers": 0.004194666650922348,
+        "expert_compute": 0.056186666091283165
+      },
+      {
+        "layer": 13,
+        "bits": 2,
+        "mean_copies": 2.1666666666666665,
+        "plan": 0.011968000054669877,
+        "route_assert": 0.026434666205508012,
+        "copy_misses": 0.10529066730911534,
+        "pointers": 0.004231999899881582,
+        "expert_compute": 0.05602399973819653
+      },
+      {
+        "layer": 14,
+        "bits": 2,
+        "mean_copies": 2,
+        "plan": 0.011917333351448178,
+        "route_assert": 0.006626666756346822,
+        "copy_misses": 0.09753333346452564,
+        "pointers": 0.004191999983352919,
+        "expert_compute": 0.07997866688917081
+      },
+      {
+        "layer": 15,
+        "bits": 2,
+        "mean_copies": 1.5833333333333333,
+        "plan": 0.01071999998142322,
+        "route_assert": 0.0061946666877095895,
+        "copy_misses": 0.078082667508473,
+        "pointers": 0.004165333268853526,
+        "expert_compute": 0.07668266755839188
+      },
+      {
+        "layer": 16,
+        "bits": 2,
+        "mean_copies": 1.5833333333333333,
+        "plan": 0.01064533336708943,
+        "route_assert": 0.0065200000535696745,
+        "copy_misses": 0.07814133466066171,
+        "pointers": 0.032431999764715634,
+        "expert_compute": 0.05893599987030029
+      },
+      {
+        "layer": 17,
+        "bits": 2,
+        "mean_copies": 2,
+        "plan": 0.011909333290532231,
+        "route_assert": 0.007306666695512831,
+        "copy_misses": 0.098063999786973,
+        "pointers": 0.0040346666355617344,
+        "expert_compute": 0.05619466615219911
+      },
+      {
+        "layer": 18,
+        "bits": 2,
+        "mean_copies": 2.6666666666666665,
+        "plan": 0.012232000202250978,
+        "route_assert": 0.007112000059957306,
+        "copy_misses": 0.1279653323775468,
+        "pointers": 0.0034426666873817644,
+        "expert_compute": 0.056511999728778996
+      },
+      {
+        "layer": 19,
+        "bits": 2,
+        "mean_copies": 2.9166666666666665,
+        "plan": 0.012719999921197692,
+        "route_assert": 0.00607199997951587,
+        "copy_misses": 0.14025066699832678,
+        "pointers": 0.00383200003610303,
+        "expert_compute": 0.0555973332375288
+      },
+      {
+        "layer": 20,
+        "bits": 2,
+        "mean_copies": 2.8333333333333335,
+        "plan": 0.012578666869861385,
+        "route_assert": 0.006322666808652381,
+        "copy_misses": 0.13574666650189707,
+        "pointers": 0.002677333385994037,
+        "expert_compute": 0.056039999860028424
+      },
+      {
+        "layer": 21,
+        "bits": 2,
+        "mean_copies": 2.6666666666666665,
+        "plan": 0.012047999848922094,
+        "route_assert": 0.006282666581682861,
+        "copy_misses": 0.12826133420458063,
+        "pointers": 0.0030320000175076225,
+        "expert_compute": 0.0554213331391414
+      },
+      {
+        "layer": 22,
+        "bits": 2,
+        "mean_copies": 2.75,
+        "plan": 0.012258666722724834,
+        "route_assert": 0.006767999924098452,
+        "copy_misses": 0.13329066671819115,
+        "pointers": 0.0024906667143416903,
+        "expert_compute": 0.05579200014472008
+      },
+      {
+        "layer": 23,
+        "bits": 2,
+        "mean_copies": 2.5833333333333335,
+        "plan": 0.012122666773696741,
+        "route_assert": 0.007042666586736838,
+        "copy_misses": 0.12441600139330451,
+        "pointers": 0.0030026666548413536,
+        "expert_compute": 0.05570666678249836
+      },
+      {
+        "layer": 24,
+        "bits": 2,
+        "mean_copies": 2.1666666666666665,
+        "plan": 0.01196266656431059,
+        "route_assert": 0.006013333292988439,
+        "copy_misses": 0.10538666751623775,
+        "pointers": 0.002461333351675421,
+        "expert_compute": 0.05658933303008477
+      },
+      {
+        "layer": 25,
+        "bits": 2,
+        "mean_copies": 2.25,
+        "plan": 0.01171466646095117,
+        "route_assert": 0.006506666696319978,
+        "copy_misses": 0.10940533395235737,
+        "pointers": 0.004101333363602559,
+        "expert_compute": 0.055786666149894394
+      },
+      {
+        "layer": 26,
+        "bits": 2,
+        "mean_copies": 2.6666666666666665,
+        "plan": 0.012637333323558172,
+        "route_assert": 0.007615999978346129,
+        "copy_misses": 0.12857066535313302,
+        "pointers": 0.0041866665706038475,
+        "expert_compute": 0.055450666695833206
+      },
+      {
+        "layer": 27,
+        "bits": 2,
+        "mean_copies": 3.25,
+        "plan": 0.013874666687722007,
+        "route_assert": 0.007552000034290056,
+        "copy_misses": 0.1554399992649754,
+        "pointers": 0.0037653333274647593,
+        "expert_compute": 0.055493333687384926
+      },
+      {
+        "layer": 28,
+        "bits": 2,
+        "mean_copies": 2.3333333333333335,
+        "plan": 0.01202133328964313,
+        "route_assert": 0.007181333416762452,
+        "copy_misses": 0.11289066728204489,
+        "pointers": 0.002925333334133029,
+        "expert_compute": 0.05540533332775036
+      },
+      {
+        "layer": 29,
+        "bits": 2,
+        "mean_copies": 2.75,
+        "plan": 0.012991999974474311,
+        "route_assert": 0.006565333460457623,
+        "copy_misses": 0.13242666764805713,
+        "pointers": 0.0032399999909102917,
+        "expert_compute": 0.05628533288836479
+      },
+      {
+        "layer": 30,
+        "bits": 2,
+        "mean_copies": 2.0833333333333335,
+        "plan": 0.011672000090281168,
+        "route_assert": 0.006095999968238175,
+        "copy_misses": 0.1196160006026427,
+        "pointers": 0.0027600000224386654,
+        "expert_compute": 0.056397333120306335
+      },
+      {
+        "layer": 31,
+        "bits": 2,
+        "mean_copies": 1.6666666666666667,
+        "plan": 0.011250666653116545,
+        "route_assert": 0.006626666795151929,
+        "copy_misses": 0.09591733415921529,
+        "pointers": 0.002792000052674363,
+        "expert_compute": 0.05677066619197527
+      },
+      {
+        "layer": 32,
+        "bits": 2,
+        "mean_copies": 2.1666666666666665,
+        "plan": 0.01146933319978416,
+        "route_assert": 0.00640533328987658,
+        "copy_misses": 0.12340533287109186,
+        "pointers": 0.002893333362104992,
+        "expert_compute": 0.05605866635839144
+      },
+      {
+        "layer": 33,
+        "bits": 2,
+        "mean_copies": 2.75,
+        "plan": 0.013149333419278264,
+        "route_assert": 0.0064559999930982786,
+        "copy_misses": 0.1322106647033555,
+        "pointers": 0.002933333356243869,
+        "expert_compute": 0.05608799991508325
+      },
+      {
+        "layer": 34,
+        "bits": 2,
+        "mean_copies": 2.75,
+        "plan": 0.012245333210254708,
+        "route_assert": 0.006557333399541676,
+        "copy_misses": 0.1318746674223803,
+        "pointers": 0.013216000127916535,
+        "expert_compute": 0.056021333361665406
+      },
+      {
+        "layer": 35,
+        "bits": 2,
+        "mean_copies": 3.0833333333333335,
+        "plan": 0.013738666661083698,
+        "route_assert": 0.006917333346791565,
+        "copy_misses": 0.1482586661974589,
+        "pointers": 0.0024880000467722616,
+        "expert_compute": 0.055504000124832
+      },
+      {
+        "layer": 36,
+        "bits": 2,
+        "mean_copies": 2.9166666666666665,
+        "plan": 0.012736000159444908,
+        "route_assert": 0.006565333305237194,
+        "copy_misses": 0.15905066571819285,
+        "pointers": 0.003842666686978191,
+        "expert_compute": 0.05607733347763618
+      },
+      {
+        "layer": 37,
+        "bits": 3,
+        "mean_copies": 2.5833333333333335,
+        "plan": 0.013522666490947207,
+        "route_assert": 0.006645333371125162,
+        "copy_misses": 0.19807466802497706,
+        "pointers": 0.003991999935048322,
+        "expert_compute": 0.05936266637096802
+      },
+      {
+        "layer": 38,
+        "bits": 3,
+        "mean_copies": 3.0833333333333335,
+        "plan": 0.01323999996141841,
+        "route_assert": 0.007074666558764875,
+        "copy_misses": 0.23610933553815508,
+        "pointers": 0.0031466666841879487,
+        "expert_compute": 0.05958399983743826
+      },
+      {
+        "layer": 39,
+        "bits": 3,
+        "mean_copies": 2.5,
+        "plan": 0.011538666673004627,
+        "route_assert": 0.006656000119013091,
+        "copy_misses": 0.17748266487615183,
+        "pointers": 0.002677333385994037,
+        "expert_compute": 0.05859733341882626
+      },
+      {
+        "layer": 40,
+        "bits": 3,
+        "mean_copies": 2.4166666666666665,
+        "plan": 0.011839999933727086,
+        "route_assert": 0.006039999891072512,
+        "copy_misses": 0.20401333565435684,
+        "pointers": 0.0028053333905215063,
+        "expert_compute": 0.05978666649510463
+      },
+      {
+        "layer": 41,
+        "bits": 3,
+        "mean_copies": 3,
+        "plan": 0.013551999970028797,
+        "route_assert": 0.006645333293514947,
+        "copy_misses": 0.22733066913982233,
+        "pointers": 0.003093333293994268,
+        "expert_compute": 0.05866133328527212
+      },
+      {
+        "layer": 42,
+        "bits": 3,
+        "mean_copies": 3,
+        "plan": 0.012866666656918824,
+        "route_assert": 0.006178666565877696,
+        "copy_misses": 0.21235466717431942,
+        "pointers": 0.004005333292298019,
+        "expert_compute": 0.05850133330871662
+      },
+      {
+        "layer": 43,
+        "bits": 3,
+        "mean_copies": 2.75,
+        "plan": 0.012773333156170944,
+        "route_assert": 0.006520000014764567,
+        "copy_misses": 0.1947226671812435,
+        "pointers": 0.004255999888603886,
+        "expert_compute": 0.05848800018429756
+      },
+      {
+        "layer": 44,
+        "bits": 3,
+        "mean_copies": 2.75,
+        "plan": 0.012176000202695528,
+        "route_assert": 0.00631199994434913,
+        "copy_misses": 0.1946826696706315,
+        "pointers": 0.004098666715435684,
+        "expert_compute": 0.05909599922597408
+      },
+      {
+        "layer": 45,
+        "bits": 3,
+        "mean_copies": 2.5,
+        "plan": 0.01222400002491971,
+        "route_assert": 0.00701066676992923,
+        "copy_misses": 0.17753599708278975,
+        "pointers": 0.0031920000134656825,
+        "expert_compute": 0.06029599936058124
+      },
+      {
+        "layer": 46,
+        "bits": 3,
+        "mean_copies": 3.6666666666666665,
+        "plan": 0.014741333356748024,
+        "route_assert": 0.006509333150461316,
+        "copy_misses": 0.25907200388610363,
+        "pointers": 0.003727999962090204,
+        "expert_compute": 0.05890666631360849
+      },
+      {
+        "layer": 47,
+        "bits": 3,
+        "mean_copies": 3.5833333333333335,
+        "plan": 0.01365599975300332,
+        "route_assert": 0.006970666736985247,
+        "copy_misses": 0.2525466661900282,
+        "pointers": 0.004210666598131259,
+        "expert_compute": 0.057568000008662544
+      }
+    ]
+  },
+  "hypothesis_verdict": "CONFIRMED",
+  "copy_plus_expert_fraction_of_step": 0.5257030621349291,
+  "upper_bound_speedups_for_instrumented_model_step": {
+    "eliminate_copies": 1.6169483564841394,
+    "halve_copy_time": 1.2357510628574295,
+    "halve_expert_compute_time": 1.0776744669994516
+  },
+  "instrumented_first_16_tokens_equal_unprofiled_code": true,
+  "limitations": [
+    "Two short prompts, one unprofiled measurement each; no confidence interval.",
+    "GPU-event profile samples 12 early decode steps of the code prompt after warmup and two prior requests.",
+    "No CUPTI kernel trace: external event instrumentation measures phases, adds marker overhead, and synchronizes each step.",
+    "CUDA event denominator is elapsed execute_model GPU timeline including dispatch gaps, not sum of hardware kernel durations; sampling/frontend excluded.",
+    "Hit fraction uses 480 unique token-expert routes per step; measured only for batch one without MTP.",
+    "No long-context, concurrent serving, prefill phase profile, or Strata throughput comparison.",
+    "Optimization benefits are untested; Amdahl calculations are conditional model-step bounds, not serving forecasts."
+  ]
+}

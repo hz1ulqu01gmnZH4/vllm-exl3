@@ -1,0 +1,177 @@
+Fri Oct  2 18:05:02 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 615.71.09              KMD Version: 616.92        CUDA UMD Version: 13.4     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 5090        On  |   00000000:02:00.0 Off |                  N/A |
+| 31%   61C    P8             39W /  575W |    1135MiB /  32607MiB |      1%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+ 110331 rg              /usr/bin/rg vllm|strata|nsys
+#!/usr/bin/env bash
+set -euo pipefail
+QWEN_EXL3_SETUP="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+QWEN_EXL3_RUNTIME="$QWEN_EXL3_SETUP/experiments/2026-09-29_exl3-full-model-cached-serving/artifacts/runtime"
+
+export PYTHONPATH="$QWEN_EXL3_SETUP/experimental/expert-pool/src:$QWEN_EXL3_RUNTIME"
+export VLLM_USE_V2_MODEL_RUNNER=1 HF_HUB_OFFLINE=1
+export VLLM_EXL3_MOE_KERNEL=exllamav3 VLLM_EXL3_EXPERT_CACHE_ROWS=160
+export VLLM_EXL3_EXPERT_CACHE_POLICY=precision-lru
+export VLLM_EXL3_COOP=1
+export VLLM_EXL3_NGRAM_TABLE=pinned EXL3_EXPANDABLE_SEGMENTS=0
+export VLLM_CACHE_ROOT="$QWEN_EXL3_SETUP/cache/exl3"
+export PYTORCH_ALLOC_CONF=expandable_segments:True,pinned_max_round_threshold_mb:1,pinned_max_cached_size_mb:1
+export OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2
+
+# Four sequences with up to 131072 tokens each, FP8 KV, and no MTP.
+# Reserve 8 GiB for KV; full-context concurrency still needs runtime validation.
+exec "$QWEN_EXL3_SETUP/.venv/bin/python" "$QWEN_EXL3_SETUP/supervise.py" -- \
+  "$QWEN_EXL3_SETUP/.venv/bin/python" -m vllm.entrypoints.cli.main serve \
+  "$QWEN_EXL3_SETUP/models/Qwen3.8-Flash-Next-EXL3-cache" \
+  --served-model-name qwen3.8-exl3 --host 127.0.0.1 --port 8009 \
+  --quantization exl3 --dtype bfloat16 --tensor-parallel-size 1 \
+  --load-format safetensors --safetensors-load-strategy lazy \
+  --kv-cache-dtype fp8_e4m3 \
+  --language-model-only \
+  --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,2,4]}' \
+  --max-model-len 131072 --max-num-seqs 4 --max-num-batched-tokens 2048 \
+  --gpu-memory-utilization 0.85 --kv-cache-memory-bytes 8589934592 \
+  --no-enable-prefix-caching \
+  --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder \
+  "$@"
+#!/usr/bin/env bash
+# Source this file from the launcher; all runtime caches stay in this directory.
+QWEN_SETUP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="$QWEN_SETUP_DIR/.venv/bin:/opt/cuda/bin:$PATH"
+export CUDA_HOME=/opt/cuda
+export VLLM_CACHE_ROOT="$QWEN_SETUP_DIR/cache/vllm"
+export FLASHINFER_WORKSPACE_BASE="$QWEN_SETUP_DIR/cache/flashinfer"
+export TRITON_CACHE_DIR="$QWEN_SETUP_DIR/cache/triton"
+export TORCHINDUCTOR_CACHE_DIR="$QWEN_SETUP_DIR/cache/torchinductor"
+export HF_XET_CACHE="$QWEN_SETUP_DIR/cache/xet"
+export HF_HUB_DISABLE_TELEMETRY=1
+export VLLM_NO_USAGE_STATS=1
+export MAX_JOBS=4
+# Required for CPU weight offload/UVA on WSL; KV cache remains on the GPU.
+export VLLM_WSL2_ENABLE_PIN_MEMORY=1
+export VLLM_WEIGHT_OFFLOADING_DISABLE_PIN_MEMORY=0
+export VLLM_WEIGHT_OFFLOADING_DISABLE_UVA=0
+# Let this architecture select its own attention implementation.
+unset VLLM_ATTENTION_BACKEND
+
+QWEN_MODEL_DIR="$QWEN_SETUP_DIR/models/Qwen3.8-Flash-Next-NVFP4"
+QWEN_MODEL_REVISION=fc694b54fb0174e0913e6adf86691ef85a4ead47
+../experimental/expert-pool/smoke.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/REPORT.html
+../experimental/ple-mmap/check-disk-lookup.py
+../experimental/ple-mmap/cache_capacity_probe.py
+../experimental/ple-mmap/overlay/cache_capacity_probe.py
+../experimental/ple-mmap/test-full-context.py
+../experimental/ple-mmap/run-disk-test.py
+../experiments/2026-09-20_qwen38-full-context-and-concurrency/REPORT.html
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/tests/test_gpu_profile_cuda.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/tests/test_optimization.py
+../experiments/2026-09-29_exl3-gpu-expert-cache-prototype/REPORT.html
+../experimental/ple-mmap/overlay/vllm/kernels/helion/config_manager.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/case_key.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/register.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/utils.py
+../experiments/2026-09-20_qwen38-full-context-and-concurrency/config/test-full-context.py
+../experiments/2026-09-20_qwen38-full-context-and-concurrency/config/cache_capacity_probe.py
+../experiments/2026-09-30_exl3-decode-optimization/results/baseline64/profile/profiler_out_0.txt
+../experiments/2026-09-30_exl3-decode-optimization/results/baseline64/profile/dp0_pp0_tp0_dcp0_ep0_rank0.1790772903586831957.pt.trace.json.gz
+../experiments/2026-09-30_exl3-decode-optimization/REPORT.html
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/rms_norm_dynamic_per_token_quant.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/per_token_group_fp8_quant.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/dynamic_per_token_scaled_fp8_quant.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/rms_norm_per_block_quant.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/fused_qk_norm_rope.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/__init__.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/silu_mul_fp8.py
+../experimental/ple-mmap/overlay/vllm/kernels/helion/ops/silu_and_mul_per_block_quant.py
+../experimental/ple-mmap/overlay/vllm/cute_utils/mbarrier.py
+../experimental/ple-mmap/overlay/vllm/cute_utils/_tcgen05.py
+../experimental/ple-mmap/overlay/vllm/cute_utils/cvt.py
+../experimental/ple-mmap/overlay/vllm/cute_utils/__init__.py
+../experimental/ple-mmap/overlay/vllm/multimodal/inputs.py
+../experimental/ple-mmap/overlay/vllm/multimodal/cache.py
+../experimental/ple-mmap/overlay/vllm/multimodal/utils.py
+../experimental/ple-mmap/overlay/vllm/multimodal/encoder_budget.py
+../experimental/ple-mmap/overlay/vllm/multimodal/image.py
+../experimental/ple-mmap/overlay/vllm/platforms/xpu.py
+../experimental/ple-mmap/overlay/vllm/platforms/tpu.py
+../experimental/ple-mmap/overlay/vllm/platforms/rocm.py
+../experimental/ple-mmap/overlay/vllm/platforms/zen_cpu.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/bf16_madv_compat.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/dequant.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/expert_cache_loader.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/physical_k_compat.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/qwen_ple.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/expert_cache_tables.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/deepseek_v41.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/v41_context.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/runtime_policy.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/expert_cache.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/cpu_offload.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/prefill_policy.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/tensor_mixed_k.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/tp_geometry_compat.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/worker_parity.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/exl3.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/optimization.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/__init__.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/uva_offload.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/mixed_k_guard.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/k78_compat.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/artifacts/rejected-src/vllm_exl3/tensor_metadata.py
+../experimental/ple-mmap/overlay/vllm/multimodal/video_prune/vidcom2.py
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/captures.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/events.jsonl
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/profile-131k.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-steps.jsonl
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/profile-131k.sse
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/seed-32k.sse
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/metrics.jsonl
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/remaining-budget-seconds.txt
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-seed-32k.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/summary.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-profile-131k.sse
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/seed-32k.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-profile-131k.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/warmup.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/early-profiler-table.txt
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/supervisor.pid
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/warmup.sse
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-warmup.json
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-warmup.sse
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/results/event-seed-32k.sse
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/README.md
+../experiments/2026-09-25_qwen38-prefill-kernel-profile/REPORT.html
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/config/analyze_full.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/config/model_bench.py
+../experiments/2026-10-01_exl3-rtx5090-hc-kernels/config/probe.py
+../experimental/ple-mmap/overlay/vllm/multimodal/video_prune/__init__.py
+../experimental/ple-mmap/overlay/vllm/multimodal/video_prune/evs.py
+../experimental/ple-mmap/overlay/vllm/multimodal/hasher.py
+../experimental/ple-mmap/overlay/vllm/multimodal/parse.py
+../experimental/ple-mmap/overlay/vllm/multimodal/gpu_ipc_memory.py
+../experimental/ple-mmap/overlay/vllm/multimodal/audio.py
+../experiments/2026-09-30_exl3-decode-optimization/artifacts/baseline-src/vllm_exl3/bf16_madv_compat.py
+../experimental/ple-mmap/overlay/vllm/platforms/cuda.py
+../experimental/ple-mmap/overlay/vllm/platforms/interface.py
+../experimental/ple-mmap/overlay/vllm/platforms/__init__.py
+../experimental/ple-mmap/overlay/vllm/platforms/cpu.py
+               total        used        free      shared  buff/cache   available
+Mem:           125Gi       4.0Gi       117Gi       439Mi       5.5Gi       121Gi
+Swap:           32Gi       704Ki        31Gi

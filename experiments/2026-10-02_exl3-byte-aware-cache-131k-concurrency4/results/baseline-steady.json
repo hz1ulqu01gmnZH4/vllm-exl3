@@ -1,0 +1,11 @@
+{
+  "recorded_steps": 511,
+  "steady_four_steps": 319,
+  "steady_four_elapsed_s": 11.696812358000898,
+  "steady_four_aggregate_tok_s": 108.7475767814572,
+  "steady_four_per_request_tok_s": 27.1868941953643,
+  "min_computed_in_steady": 130560,
+  "max_computed_in_steady": 131070,
+  "gpu_peak_allocated_bytes": 28844213248,
+  "gpu_peak_reserved_bytes": 29735518208
+}

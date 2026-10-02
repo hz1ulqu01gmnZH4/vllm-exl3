@@ -1,0 +1,22 @@
+{
+  "local_revision": "c24d861",
+  "strata_repository": "https://github.com/Niko1221/Strata",
+  "strata_revision": "1678de333d0e0711bc414ad992b640e1a37dd814",
+  "inspected_sources": [
+    {"path": "src/core/expert_source.cpp", "lines": "1621-1715", "finding": "Publish resident GPU work and a selected PCIe share first; compute remaining misses on CPU. Uses existing native/GGUF expert layouts, not EXL3."},
+    {"path": "src/program/generate.cpp", "lines": "1715-1736", "finding": "PCIe share adapts to a startup H2D bandwidth probe for native packs."},
+    {"path": "src/program/generate.cpp", "lines": "6033-6099", "finding": "Decayed-frequency residency replacement, capped swaps, asynchronous copies during MTP drafting, residency committed after completion."},
+    {"path": "src/spec/draft_policy.cpp", "lines": "37-99", "finding": "Lookup-vs-MTP choice uses observed round cost and accepted tokens with a margin and bounded exploration. This is not a batch-size-only heuristic."},
+    {"path": "src/prefill/prefill.cpp", "lines": "1148-1250", "finding": "Prefill skips resident experts, streams missing experts through a ring on a copy stream, and fences slot reuse; separate host issuer."}
+  ],
+  "historical_local_evidence": [
+    "docs/validation/strata-cache-optimization.json",
+    "docs/validation/switchable-decode-optimization.json",
+    "docs/decode-tuning.html"
+  ],
+  "local_source_findings": [
+    {"path": "src/vllm_exl3/expert_cache.py", "lines": "338-390", "finding": "Decode: GPU planner, async route assertion, fixed 32-program UVA copy, update all 512 expert pointers, then expert compute; calls serialized on one stream. Prefill copies the entire layer into one shared staging bank."},
+    {"path": "src/vllm_exl3/expert_cache_tables.py", "lines": "561-644", "finding": "LRU scans recency only on promotable misses, then selects victims sequentially from one CTA. An all-hit scan bypass is already implemented."}
+  ],
+  "comparison_limit": "Strata source review only; no Strata binary run or apples-to-apples throughput comparison. Quantization formats, CPU path, context and speculation differ."
+}

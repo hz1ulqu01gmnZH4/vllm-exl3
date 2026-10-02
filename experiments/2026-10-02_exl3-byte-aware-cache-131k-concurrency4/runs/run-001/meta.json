@@ -1,0 +1,1 @@
+{"run":"run-001","t":"2026-10-02T10:15:50Z","command":"nvidia-smi; free -h; ps -eo pid,comm,args | rg \"vllm|profile_events|profile_model\" | head -20; cat ../.venv/lib/python3.12/site-packages/vllm/v1/core/sched/output.py | sed -n \"226,260p\"","exit_code":0,"duration_s":1}

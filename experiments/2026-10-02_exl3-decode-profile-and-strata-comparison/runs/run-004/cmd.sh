@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# captured 2026-10-02T09:09:08Z
+git rev-parse HEAD; git -C experiments/2026-10-02_exl3-decode-profile-and-strata-comparison/artifacts/Strata show -s --format=fuller HEAD; lscpu; sha256sum ../serve-exl3.sh src/vllm_exl3/expert_cache.py src/vllm_exl3/expert_cache_tables.py src/vllm_exl3/exl3.py ../experiments/2026-09-29_exl3-full-model-cached-serving/artifacts/runtime/exllamav3_ext.so; cat ../.venv/lib/python3.12/site-packages/__editable__.vllm_exl3-0.5.0.pth; cat ../.venv/lib/python3.12/site-packages/torch/version.py

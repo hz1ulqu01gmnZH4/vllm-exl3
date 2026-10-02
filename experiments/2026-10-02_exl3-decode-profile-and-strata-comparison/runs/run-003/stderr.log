@@ -1,0 +1,37 @@
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=110784) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=110784) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=110784) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=110784) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=110784) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=110784) Loading safetensors checkpoint shards:   0% Completed | 0/7 [00:00<?, ?it/s]
+(EngineCore pid=110784) Loading safetensors checkpoint shards:  14% Completed | 1/7 [00:08<00:50,  8.44s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards:  29% Completed | 2/7 [00:18<00:47,  9.60s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards:  43% Completed | 3/7 [00:30<00:42, 10.53s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards:  57% Completed | 4/7 [00:40<00:31, 10.41s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards:  71% Completed | 5/7 [00:49<00:19,  9.98s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards:  86% Completed | 6/7 [00:52<00:07,  7.62s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards: 100% Completed | 7/7 [00:54<00:00,  5.65s/it]
+(EngineCore pid=110784) Loading safetensors checkpoint shards: 100% Completed | 7/7 [00:54<00:00,  7.80s/it]
+(EngineCore pid=110784) 
+(EngineCore pid=110784) 2026-10-02 18:09:32,672 - INFO - autotuner.py:2789 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /home/ak/qwen38-vllm/cache/exl3/flashinfer_autotune_cache/0.6.18.post1/120f/4626d781e42deacc1cc503eac5d09ddeff322caf2dc6a97dc08195159df145d7/autotune_configs.json
+(EngineCore pid=110784) 2026-10-02 18:09:32,673 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=110784) 2026-10-02 18:09:34,390 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=110784) 2026-10-02 18:09:34,411 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /home/ak/qwen38-vllm/cache/exl3/flashinfer_autotune_cache/0.6.18.post1/120f/4626d781e42deacc1cc503eac5d09ddeff322caf2dc6a97dc08195159df145d7/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=110784) Capturing CUDA graphs (FULL):   0%|          | 0/3 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  33%|███▎      | 1/3 [00:00<00:00,  6.89it/s]Capturing CUDA graphs (FULL):  67%|██████▋   | 2/3 [00:00<00:00,  7.22it/s]Capturing CUDA graphs (FULL): 100%|██████████| 3/3 [00:00<00:00,  7.61it/s]Capturing CUDA graphs (FULL): 100%|██████████| 3/3 [00:00<00:00,  7.45it/s]
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+WARNING:2026-10-02 18:09:51 110784:110784 init.cpp:115] function cbapi.getCuptiStatus() failed with error CUPTI_ERROR_UNKNOWN (999)
+WARNING:2026-10-02 18:09:51 110784:110784 init.cpp:116] CUPTI initialization failed - CUDA profiler activities will be missing
+INFO:2026-10-02 18:09:51 110784:110784 init.cpp:118] If you see CUPTI_ERROR_INSUFFICIENT_PRIVILEGES, refer to https://developer.nvidia.com/nvidia-development-tools-solutions-err-nvgpuctrperm-cupti
+USDT:2026-10-02 18:09:51 110784:110784 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-02 18:09:52 110784:110784 SyncActivityProfilerHandler.cpp:59] profiler_stop

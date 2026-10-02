@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EXL3 decode profile and Strata comparison — 2 October 2026</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #e8e8e8; color: #111; font: 17px/1.55 system-ui, sans-serif; }
+    main { max-width: 1080px; margin: 36px auto; padding: 0 24px 32px; }
+    header, section, footer { background: #fff; border: 3px solid #000; box-shadow: 7px 7px 0 #000; padding: 26px; margin-bottom: 26px; }
+    h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.08; max-width: 900px; margin: 8px 0 22px; }
+    h2 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 18px; }
+    h3 { font-size: 1.1rem; line-height: 1.3; margin: 0 0 8px; }
+    p { margin: 0 0 15px; }
+    p:last-child { margin-bottom: 0; }
+    a { color: #000; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+    a:hover { background: #e5e5e5; }
+    a:focus-visible { outline: 3px solid #000; outline-offset: 4px; }
+    code { font-size: .9em; overflow-wrap: anywhere; }
+    .eyebrow { text-transform: uppercase; font-weight: 800; letter-spacing: .08em; font-size: .8rem; }
+    .lead { font-size: 1.16rem; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+    .stat { border: 3px solid #000; background: #eee; padding: 16px; }
+    .stat strong { display: block; font-size: 1.8rem; line-height: 1.2; }
+    .stat span { display: block; font-size: .86rem; margin-top: 5px; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-variant-numeric: tabular-nums; }
+    caption { text-align: left; font-weight: 700; margin-bottom: 10px; }
+    th, td { border: 2px solid #000; padding: 10px 12px; text-align: left; }
+    thead { background: #111; color: #fff; }
+    tbody th { font-weight: 600; }
+    tbody tr:nth-child(even) { background: #eee; }
+    .number { text-align: right; white-space: nowrap; }
+    .note { background: #eee; border-left: 6px solid #000; padding: 14px 16px; margin-top: 18px; }
+    ol { padding-left: 25px; margin: 0; }
+    li { padding: 16px 0; border-top: 2px solid #000; }
+    li:first-child { padding-top: 0; border-top: 0; }
+    li::marker { font-weight: 900; }
+    footer { font-size: .9rem; }
+    @media (max-width: 640px) { main { margin-top: 18px; padding: 0 14px 20px; } header, section, footer { padding: 18px; } .stats { grid-template-columns: 1fr; } }
+    @media print { body { background: #fff; font-size: 10pt; } main { margin: 0; max-width: none; padding: 0; } header, section, footer { box-shadow: none; margin-bottom: 14px; padding: 16px; } h1 { font-size: 25pt; } h2, h3 { break-after: avoid; } tr, .stat { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Measured 2 October 2026 · EXL3 / RTX 5090</p>
+    <h1>67.04 tok/s baseline. Reduce copied expert bytes first.</h1>
+    <p class="note"><strong>Subsequent 131K × 4 decision:</strong> the fixed-budget cache candidates failed the acceptance gate; retain precision-LRU 160. MTP is excluded for this workload. The recommendations below preserve the original short-context investigation; see the <a href="../2026-10-02_exl3-byte-aware-cache-131k-concurrency4/REPORT.html">completed concurrency-four experiment</a> for the current decision.</p>
+    <p class="lead">The current launcher delivered a <strong>67.04 tok/s geometric mean</strong> across two short, unprofiled requests. A separate instrumented decode sample copied <strong>183.71 MiB per token</strong>; miss transfers were the largest identified phase at <strong>38.16%</strong> of elapsed model-step time. Byte-aware cache allocation is the leading next probe. Every optimization below remains untested.</p>
+    <div class="stats" aria-label="Key observations">
+      <div class="stat"><strong>67.04 tok/s</strong><span>Unprofiled decode baseline</span></div>
+      <div class="stat"><strong>74.29%</strong><span>Instrumented expert-route hit fraction</span></div>
+      <div class="stat"><strong>52.57%</strong><span>Instrumented copy + expert compute share</span></div>
+    </div>
+  </header>
+
+  <section aria-labelledby="measurement">
+    <h2 id="measurement">What was measured</h2>
+    <p>Qwen3.8-Flash-Next-EXL3-cache ran on an RTX 5090 with a Ryzen 9 9950X. Local revision <code>c24d861</code> used precision-LRU 160, cooperative expert compute, an 11,970,048,000-byte expert bank, 8 GiB FP8 KV, and decode graphs for sizes 1, 2 and 4. The launcher had <strong>four-sequence capacity, one active request and no MTP</strong>. Seed was 42; sampling temperature was zero. Exact settings and runtime identities are saved in the <a href="config/run_profile.sh">launcher</a>, <a href="config/profile_model.py">baseline script</a> and <a href="runs/run-004/stdout.log">runtime record</a>.</p>
+    <p>The first profiling execution, <a href="runs/run-003/stdout.log">run-003</a>, measured 66.67 and 67.42 tok/s before profiling: 34/39 prompt tokens and 128 output tokens per request. Decode rate uses 127 intervals between the first and last output token; it excludes prefill and startup. Each prompt had one measurement, so there is no confidence interval. <a href="results/serving.json">Raw throughput results</a>.</p>
+    <p>Its profiler reported <code>CUPTI_ERROR_UNKNOWN (999)</code> and produced <strong>zero CUDA kernel events</strong>. The single resolution attempt, <a href="runs/run-005/stdout.log">run-005</a>, used external CUDA events retained in graphs, with per-step synchronization. It sampled <strong>12 early decode steps of one code prompt</strong> after matching the earlier warmup/request history; all 48 layer intervals lay inside their measured steps. This consumes the two-execution budget. <a href="config/event_hooks.py">Instrumentation</a> · <a href="results/cuda-events.jsonl">raw event records</a>.</p>
+    <div class="table-wrap">
+      <table>
+        <caption>Instrumented model-step mean: 19.80 ms; range 15.55–25.23 ms</caption>
+        <thead><tr><th scope="col">Phase</th><th scope="col" class="number">Mean ms</th><th scope="col" class="number">Share</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Miss transfers</th><td class="number">7.554</td><td class="number">38.16%</td></tr>
+          <tr><th scope="row">Packed expert compute</th><td class="number">2.854</td><td class="number">14.42%</td></tr>
+          <tr><th scope="row">Cache planning</th><td class="number">0.601</td><td class="number">3.04%</td></tr>
+          <tr><th scope="row">Route assertion</th><td class="number">0.342</td><td class="number">1.73%</td></tr>
+          <tr><th scope="row">Pointer updates</th><td class="number">0.211</td><td class="number">1.07%</td></tr>
+          <tr><th scope="row">Unattributed remainder</th><td class="number">8.236</td><td class="number">41.60%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The denominator is elapsed GPU timeline inside <code>execute_model</code>, including dispatch gaps and marker overhead; sampling/frontend are excluded. The 19.80 ms mean and roughly 14.9 ms unprofiled token intervals cover different windows and instrumentation. Their difference cannot be assigned entirely to event overhead. The remainder includes 6.55 ms between caches and 1.67 ms before the first cache; attention, dense projections, shared experts and dispatch gaps remain unseparated. <a href="results/summary.json">Summary</a> · <a href="results/gaps-and-precision.json">gap analysis</a>.</p>
+    <p class="note"><strong>Verdict: narrowly confirmed for this instrumented condition.</strong> Copy plus expert compute totals 52.57%, exceeding the preregistered 50% threshold. This establishes neither a general serving share nor hardware busy-time attribution. The first 16 instrumented output tokens matched the baseline code output; that is limited consistency evidence, not broad checkpoint parity.</p>
+  </section>
+
+  <section aria-labelledby="recommendations">
+    <h2 id="recommendations">Ranked next probes</h2>
+    <p>Strata was reviewed at immutable revision <code>1678de333d0e0711bc414ad992b640e1a37dd814</code>. It was not built or benchmarked: weight formats, CPU execution and speculation differ. The useful comparison is architectural. Proposed gates below are future acceptance criteria, not achieved results. <a href="results/recommendations.json">Full recommendation record</a>.</p>
+    <ol>
+      <li>
+        <h3>Reduce transferred bytes with byte-aware cache allocation/admission</h3>
+        <p>K3 accounts for 111.60 MiB/token versus K2’s 72.11 MiB. Replay code, prose and long-context routing traces at the existing bank budget; optimize saved bytes per cache byte. Existing precision pools already compact K2 and share capacity across layers. More K3 traffic alone does not justify more K3 capacity. Effective transfer rate was 25.50 GB/s; current link width was not measured, so saturation is unproven.</p>
+        <p><strong>Gate:</strong> at least 20% fewer replayed transfer bytes, then 10% higher matched geometric-mean serving speed, no workload over 3% slower, unchanged KV/concurrency budgets and checkpoint parity. Preserve global-pool semantics: historical LFU96 fell from 62.42 to 49.38 tok/s. <a href="../../docs/validation/strata-cache-optimization.json">Prior cache results</a>.</p>
+      </li>
+      <li>
+        <h3>Requalify MTP, then consider cost-aware draft/lookup selection</h3>
+        <p>Compare MTP-off against MTP3 with one active request; record accepted tokens, verification cost and copied bytes per accepted token. Older MTP measurements used different settings. Strata’s <a href="https://github.com/Niko1221/Strata/blob/1678de333d0e0711bc414ad992b640e1a37dd814/src/spec/draft_policy.cpp#L37-L99">draft policy</a> combines observed cost and acceptance, with bounded exploration.</p>
+        <p><strong>Gate:</strong> 10% higher accepted output tok/s, no workload over 3% slower, target verification and checkpoint parity preserved. Qualify concurrency separately: the current <a href="../../src/vllm_exl3/expert_cache.py">64-lane planner</a> cannot cover four requests × four verification rows × top-k 10 = 160 lanes. Enabling MTP3 in today’s four-sequence launcher requires capacity work.</p>
+      </li>
+      <li>
+        <h3>Overlap resident expert work with miss staging</h3>
+        <p>Prototype one real layer with hit/miss partitions, stable staging slots and completion events. Strata <a href="https://github.com/Niko1221/Strata/blob/1678de333d0e0711bc414ad992b640e1a37dd814/src/core/expert_source.cpp#L1621-L1715">publishes resident GPU work first</a> and <a href="https://github.com/Niko1221/Strata/blob/1678de333d0e0711bc414ad992b640e1a37dd814/src/program/generate.cpp#L6033-L6099">commits asynchronous residency changes after completion</a>. Our serialized path needs explicit mapping/slot ownership changes; its copy kernel consumes SMs and cooperative compute may constrain overlap.</p>
+        <p><strong>Gate:</strong> changing-route graph correctness and 15% lower layer latency before a full-model trial. Halving copy time gives a conditional 1.236× instrumented model-step bound; it is not an expected serving gain.</p>
+      </li>
+      <li>
+        <h3>Attribute backbone time before another expert-math rewrite</h3>
+        <p>Add a few backbone boundaries to resolve the 41.60% remainder. <strong>Gate:</strong> identify a component consuming at least 10% of model-step time before implementing, then require parity and 10% matched serving gain. Halving routed expert compute has only a conditional 1.078× model-step bound. The previous HC prototype failed real-checkpoint parity, and cooperative-fast preparation failed its latency gate. <a href="../../docs/validation/switchable-decode-optimization.json">Prior kernel results</a>.</p>
+      </li>
+      <li>
+        <h3>Pipeline prefill staging and reuse residents</h3>
+        <p>Current eager prefill stages every expert in each layer. Profile one 8K or 32K prompt before trying Strata’s <a href="https://github.com/Niko1221/Strata/blob/1678de333d0e0711bc414ad992b640e1a37dd814/src/prefill/prefill.cpp#L1148-L1250">resident-skipping, event-fenced staging ring</a>. <strong>Gate:</strong> 15% lower cold-prefix TTFT at fixed memory, packed-byte and numerical parity, and safe slot reuse. Extra staging competes with KV/cache capacity; retain <code>TEMP_ROWS_FUSED=2048</code>. Prefill was not measured here.</p>
+      </li>
+      <li>
+        <h3>Defer CPU/GPU hybrid execution until one EXL3 expert wins</h3>
+        <p>Strata <a href="https://github.com/Niko1221/Strata/blob/1678de333d0e0711bc414ad992b640e1a37dd814/src/core/expert_source.cpp#L1621-L1745">runs CPU misses alongside GPU work</a>, using other weight layouts. This AVX-512-capable host has no qualified CPU EXL3 backend. <strong>Gate:</strong> one K2/K3 expert must pass parity and beat avoided transfer-plus-GPU latency, including activation/result handoff and synchronization, before integration. This is an architecture experiment; model conversion is outside scope.</p>
+      </li>
+    </ol>
+  </section>
+
+  <footer>
+    <p><strong>Scope and reproducibility.</strong> No optimization was implemented or benchmarked. Long-context decode, concurrent serving, prefill attribution and Strata throughput remain unmeasured. The experiment stopped when its bounded question was answered. <a href="README.md">Preregistration</a> · <a href="NOTES.md">notebook</a> · <a href="data/sources.json">source manifest</a> · <a href="config/analyze.py">analysis</a> · <a href="config/gaps_analysis.py">gap calculation</a>.</p>
+  </footer>
+</main>
+</body>
+</html>

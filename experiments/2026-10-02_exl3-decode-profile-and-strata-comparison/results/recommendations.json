@@ -1,0 +1,57 @@
+{
+  "status": "Suggestions only; no optimization implemented or benchmarked",
+  "priority": [
+    {
+      "rank": 1,
+      "proposal": "Reduce transferred bytes through byte-aware cache allocation/admission",
+      "evidence": "74.29% hit fraction; 183.71 MiB copied per token; K3 contributes 111.60 MiB and K2 72.11 MiB per token. Copy rate already 25.50 GB/s effective, so a pure copy-kernel speedup is not the leading bet.",
+      "next_probe": "Record routing traces on code/prose/long-context workloads and replay candidate capacities at a fixed 11970048000-byte bank budget; score bytes avoided, not hit count. Then one matched full-model comparison for the selected candidate.",
+      "acceptance": "At least 20% fewer transferred bytes in replay, followed by at least 10% higher geometric-mean serving speed with no workload slower by more than 3%, unchanged KV/concurrency budgets, and checkpoint parity.",
+      "constraints": "Precision pools already compact K2 rows and share capacity across layers within each precision. K3 having more traffic does not by itself justify allocating it more memory; compare marginal saved bytes per cache byte. Keep global pool semantics; previous per-layer LFU96 regressed. Admission knobs exist in expert_cache_tables.set_control but are not advertised launcher controls."
+    },
+    {
+      "rank": 2,
+      "proposal": "Requalify MTP, then adopt cost-aware draft/lookup selection",
+      "evidence": "Current launch has no MTP. Earlier MTP3 results used different KV/concurrency/runtime settings, so they do not establish a gain over today's 67.04 tok/s.",
+      "strata": "src/spec/draft_policy.cpp:37-99",
+      "next_probe": "Matched MTP-off versus MTP3 for a one-request profile, recording accepted tokens, verification cost and cache bytes per accepted token. Qualify four concurrent requests separately before changing that deployment profile.",
+      "acceptance": "At least 10% higher accepted output tokens/s with no workload slower by more than 3%; preserve target verification and real-checkpoint parity. Only add lookup when measured acceptance and cost predict a benefit.",
+      "constraints": "Current 64-lane planner allows top_k times total verification rows <=64. Four requests times four verification rows times top_k10 is 160, beyond this cache implementation. Do not enable MTP3 blindly in the four-sequence launcher. Batch-size heuristics or confidence pruning alone are not Strata's cost model."
+    },
+    {
+      "rank": 3,
+      "proposal": "Overlap resident-expert computation with staged miss transfer",
+      "evidence": "The current decode path serializes planner, UVA copy, pointer update and cooperative expert compute; copies alone occupy 38.16% of the instrumented model step.",
+      "strata": "src/core/expert_source.cpp:1621-1715 and src/program/generate.cpp:6033-6099",
+      "next_probe": "One real-layer prototype with explicit hit/miss route partitions, stable staging slots and completion events; measure under actual cache miss distributions.",
+      "acceptance": "Bit/route correctness through changing-routing graph replay and at least 15% layer-latency reduction before a full-model trial.",
+      "constraints": "Requires changing the documented single-stream ownership contract and safe mapping/slot lifetime. Current copy uses SMs, and cooperative compute may restrict concurrent residency; adding a stream alone is insufficient. Halving copy time implies at most 1.236x instrumented model-step speed, not a serving forecast."
+    },
+    {
+      "rank": 4,
+      "proposal": "Attribute the remaining backbone time before another expert-math rewrite",
+      "evidence": "41.60% of the instrumented step lies outside cache phases: 6.55 ms between caches, 1.67 ms before the first cache and 0.02 ms after the last. Dense projections, attention, shared experts and runtime/dispatch gaps are not separated by this profile.",
+      "next_probe": "Add a few backbone phase boundaries and inspect the dominant category; then try one narrowly scoped fusion or dispatch improvement.",
+      "acceptance": "Select a component contributing at least 10% of model-step time before implementing; maintain checkpoint parity and at least 10% matched serving gain.",
+      "constraints": "Do not label the entire residual CPU overhead or attention time. Halving measured routed expert compute alone has only a 1.078x model-step bound. The prior HC prototype failed real-weight parity and cooperative-fast preparation failed its preset gate."
+    },
+    {
+      "rank": 5,
+      "proposal": "Pipeline prefill staging and reuse resident experts",
+      "evidence": "Source inspection: eager prefill copies every expert in each layer to one shared bank. Prefill performance was not profiled in this pass.",
+      "strata": "src/prefill/prefill.cpp:1148-1250",
+      "next_probe": "One 8K or 32K prompt profile, then an event-fenced staging ring that streams missing experts while computing the current layer.",
+      "acceptance": "At least 15% lower cold-prefix TTFT at fixed memory, exact packed bytes and accepted numerical parity; verify staging lifetime and long-prefill behavior.",
+      "constraints": "Additional staging competes with expert-cache/KV capacity; keep TEMP_ROWS_FUSED=2048. No claim of a measured TTFT gain."
+    },
+    {
+      "rank": 6,
+      "proposal": "Treat CPU/GPU hybrid EXL3 execution as a later architecture experiment",
+      "evidence": "Strata executes CPU misses in parallel with GPU residents and some PCIe misses. This host has an AVX-512-capable Ryzen 9 9950X.",
+      "strata": "src/core/expert_source.cpp:1621-1745",
+      "next_probe": "Implement and time one CPU EXL3 K2/K3 expert against its measured transfer-plus-GPU execution cost before any runtime integration.",
+      "acceptance": "CPU expert parity and measured latency below the avoided GPU critical-path cost, including activation/result handoff and synchronization.",
+      "constraints": "Strata's GGUF/native CPU kernels do not decode EXL3 trellis weights. No ready-made CPU EXL3 backend was qualified here; converting/dequantizing the model is outside this serving-only recommendation."
+    }
+  ]
+}

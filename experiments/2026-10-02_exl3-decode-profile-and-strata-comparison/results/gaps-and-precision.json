@@ -1,0 +1,23 @@
+{
+  "gap_mean_ms": {
+    "before_first_cache": 1.6652053495248158,
+    "between_caches": 6.54843204220136,
+    "after_last_cache": 0.022693395614624023
+  },
+  "precision_groups": {
+    "2": {
+      "layers_per_step": 25,
+      "misses_per_step": 60.583333333333336,
+      "copy_MiB_per_step": 72.10540771484375,
+      "copy_ms_per_step": 2.9987360046167546,
+      "hit_fraction": 0.7576666666666667
+    },
+    "3": {
+      "layers_per_step": 23,
+      "misses_per_step": 62.833333333333336,
+      "copy_MiB_per_step": 111.5997314453125,
+      "copy_ms_per_step": 4.555469355099679,
+      "hit_fraction": 0.7268115942028985
+    }
+  }
+}

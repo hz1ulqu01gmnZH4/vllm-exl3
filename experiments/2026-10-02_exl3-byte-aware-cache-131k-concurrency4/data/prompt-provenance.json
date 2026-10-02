@@ -1,0 +1,29 @@
+{
+  "kind": "synthetic repeated public serving source/documentation; four distinct tasks",
+  "sources": [
+    {
+      "path": "/home/ak/qwen38-vllm/vllm-exl3/src/vllm_exl3/expert_cache.py",
+      "sha256": "15e5d008e744e0ad6bde0ff883794eeb9ce8d4b75f7f2ddd082ef9985753a54c"
+    },
+    {
+      "path": "/home/ak/qwen38-vllm/vllm-exl3/src/vllm_exl3/expert_cache_tables.py",
+      "sha256": "8eb73adc1e6a6755f80479c75af87b69b9d2ea2e93f0449029ee3bb2396fb751"
+    },
+    {
+      "path": "/home/ak/qwen38-vllm/vllm-exl3/README.md",
+      "sha256": "e68083899e789b17e6a755c9bd17b6fbe6197891ad0d14f06ebec4fdbd654bf3"
+    },
+    {
+      "path": "/home/ak/qwen38-vllm/vllm-exl3/docs/expert-cache.html",
+      "sha256": "ce3c540702e2821db25469928cb631be356e1a92643d3139ea87333d6f5cab98"
+    }
+  ],
+  "prompt_tokens_each": 130560,
+  "output_tokens_each": 512,
+  "sha256": [
+    "3bb51c4827bcdb818e9683bc71eba0c35a784758e667aaeb79f062df2e56c0b9",
+    "6cd94a4aeebea6d6332cfd348db21f6d857f5c913977eb19e924dbe9027e0788",
+    "0fbbf6ca609fcca993410d85e89ce7f6b44cefc1beeb5074d9260fa26c8dd66d",
+    "4d9928834953c4263160c6927aa27179061abcd53ef83df1f5d36b8d1bba7f57"
+  ]
+}

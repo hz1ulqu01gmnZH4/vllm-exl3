@@ -1,0 +1,102 @@
+{
+  "unprofiled_decode_rates_tok_s": [
+    66.67076875643643,
+    67.41956021904008
+  ],
+  "geomean_decode_tok_s": 67.04411912333741,
+  "unprofiled_decode_ms_per_token": [
+    14.999077086589908,
+    14.832490700786094
+  ],
+  "torch_trace_categories": {
+    "uncategorized": 10,
+    "user_annotation": 12,
+    "cpu_op": 30634,
+    "Trace": 1
+  },
+  "torch_cuda_kernel_events": 0,
+  "scope": "current launcher, single active request, no MTP, 34/39 prompt tokens, 128 output tokens",
+  "hypothesis_verdict": "CONFIRMED",
+  "copy_plus_expert_fraction_of_step": 0.5257030621349291,
+  "upper_bound_speedups_for_instrumented_model_step": {
+    "eliminate_copies": 1.6169483564841394,
+    "halve_copy_time": 1.2357510628574295,
+    "halve_expert_compute_time": 1.0776744669994516
+  },
+  "instrumented_first_16_tokens_equal_unprofiled_code": true,
+  "limitations": [
+    "Two short prompts, one unprofiled measurement each; no confidence interval.",
+    "GPU-event profile samples 12 early decode steps of the code prompt after warmup and two prior requests.",
+    "No CUPTI kernel trace: external event instrumentation measures phases, adds marker overhead, and synchronizes each step.",
+    "CUDA event denominator is elapsed execute_model GPU timeline including dispatch gaps, not sum of hardware kernel durations; sampling/frontend excluded.",
+    "Hit fraction uses 480 unique token-expert routes per step; measured only for batch one without MTP.",
+    "No long-context, concurrent serving, prefill phase profile, or Strata throughput comparison.",
+    "Optimization benefits are untested; Amdahl calculations are conditional model-step bounds, not serving forecasts."
+  ]
+}
+{
+  "steps": 12,
+  "layers_per_step": 48,
+  "mean_model_step_ms": 19.798674901326496,
+  "median_model_step_ms": 19.430224418640137,
+  "min_model_step_ms": 15.552160263061523,
+  "max_model_step_ms": 25.23219108581543,
+  "phases": {
+    "plan": {
+      "mean_ms_per_step": 0.6014293323969468,
+      "pct_of_model_step": 3.037725178045383
+    },
+    "route_assert": {
+      "mean_ms_per_step": 0.3415359992456312,
+      "pct_of_model_step": 1.7250447363159063
+    },
+    "copy_misses": {
+      "mean_ms_per_step": 7.554205359716434,
+      "pct_of_model_step": 38.155105820795654
+    },
+    "pointers": {
+      "mean_ms_per_step": 0.21115466641883054,
+      "pct_of_model_step": 1.0665090844270761
+    },
+    "expert_compute": {
+      "mean_ms_per_step": 2.854018662124872,
+      "pct_of_model_step": 14.415200392697265
+    },
+    "rest_of_model_step": {
+      "mean_ms_per_step": 8.236330881423783,
+      "pct_of_model_step": 41.60041478771872
+    }
+  },
+  "misses_per_step": [
+    200,
+    194,
+    61,
+    189,
+    157,
+    93,
+    55,
+    123,
+    96,
+    108,
+    77,
+    128
+  ],
+  "copy_bytes_per_step": [
+    306739200,
+    302937600,
+    98860800,
+    288710400,
+    242630400,
+    149856000,
+    89529600,
+    191596800,
+    146227200,
+    167347200,
+    119443200,
+    207667200
+  ],
+  "method": "external CUDA timing events retained in decode graphs; synchronization and counters read after each measured execute_model; includes marker overhead, excludes sampling and frontend",
+  "effective_copy_GB_s": 25.49954506495317,
+  "hit_fraction": 0.7428819444444444,
+  "mean_copy_MiB_per_step": 183.70513916015625
+}

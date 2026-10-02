@@ -1,0 +1,59 @@
+Fri Oct  2 19:15:49 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 615.71.09              KMD Version: 616.92        CUDA UMD Version: 13.4     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 5090        On  |   00000000:02:00.0 Off |                  N/A |
+|  0%   48C    P8             31W /  575W |    1223MiB /  32607MiB |     24%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+               total        used        free      shared  buff/cache   available
+Mem:           125Gi       3.8Gi       121Gi       429Mi       1.5Gi       121Gi
+Swap:           32Gi        94Mi        31Gi
+ 120219 rg              /usr/bin/rg vllm|profile_events|profile_model
+
+@dataclass
+class SchedulerOutput:
+    # list of the requests that are scheduled for the first time.
+    # We cache the request's data in each worker process, so that we don't
+    # need to re-send it every scheduling step.
+    scheduled_new_reqs: list[NewRequestData]
+    # list of the requests that have been scheduled before.
+    # Since the request's data is already cached in the worker processes,
+    # we only send the diff to minimize the communication cost.
+    scheduled_cached_reqs: CachedRequestData
+
+    # req_id -> num_scheduled_tokens
+    # Number of tokens scheduled for each request.
+    num_scheduled_tokens: dict[str, int]
+    # Total number of tokens scheduled for all requests.
+    # Equal to sum(num_scheduled_tokens.values())
+    total_num_scheduled_tokens: int
+    # req_id -> spec_token_ids
+    # If a request does not have any spec decode tokens, it will not be
+    # included in the dictionary.
+    scheduled_spec_decode_tokens: dict[str, list[int]]
+    # req_id -> encoder input indices that need processing.
+    # E.g., if a request has [0, 1], it could mean the vision encoder needs
+    # to process that the request's 0-th and 1-th images in the current step.
+    scheduled_encoder_inputs: dict[str, list[int]]
+    # Number of common prefix blocks for all requests in each KV cache group.
+    # This can be used for cascade attention.
+    num_common_prefix_blocks: list[int]
+
+    # Request IDs that are finished in between the previous and the current
+    # steps. This is used to notify the workers about the finished requests
+    # so that they can free the cached states for those requests.
+    finished_req_ids: set[str]
+    # list of mm_hash strings associated with the encoder outputs to be

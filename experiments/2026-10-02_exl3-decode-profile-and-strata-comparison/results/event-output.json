@@ -1,0 +1,22 @@
+{
+  "tokens": [
+    71093,
+    12305,
+    198,
+    727,
+    10562,
+    39914,
+    36053,
+    7080,
+    16,
+    25,
+    1103,
+    11,
+    1103,
+    17,
+    25,
+    1103
+  ],
+  "text": "```python\ndef merge_sorted_lists(list1: list, list2: list",
+  "prompt_tokens": 34
+}

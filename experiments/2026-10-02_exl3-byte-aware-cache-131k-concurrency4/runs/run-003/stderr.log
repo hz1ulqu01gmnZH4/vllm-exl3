@@ -1,0 +1,31 @@
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=121745) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=121745) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=121745) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=121745) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=121745) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=121745) Loading safetensors checkpoint shards:   0% Completed | 0/7 [00:00<?, ?it/s]
+(EngineCore pid=121745) Loading safetensors checkpoint shards:  14% Completed | 1/7 [00:04<00:28,  4.67s/it]
+(EngineCore pid=121745) Loading safetensors checkpoint shards:  29% Completed | 2/7 [00:10<00:27,  5.58s/it]
+(EngineCore pid=121745) Loading safetensors checkpoint shards:  43% Completed | 3/7 [00:18<00:25,  6.43s/it]
+(EngineCore pid=121745) Loading safetensors checkpoint shards:  57% Completed | 4/7 [00:24<00:19,  6.39s/it]
+(EngineCore pid=121745) Loading safetensors checkpoint shards:  71% Completed | 5/7 [00:29<00:11,  5.98s/it]
+(EngineCore pid=121745) Loading safetensors checkpoint shards:  86% Completed | 6/7 [00:30<00:04,  4.28s/it]
+(EngineCore pid=121745) Loading safetensors checkpoint shards: 100% Completed | 7/7 [00:30<00:00,  4.42s/it]
+(EngineCore pid=121745) 
+(EngineCore pid=121745) 2026-10-02 19:26:20,649 - INFO - autotuner.py:2789 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /home/ak/qwen38-vllm/cache/exl3/flashinfer_autotune_cache/0.6.18.post1/120f/4626d781e42deacc1cc503eac5d09ddeff322caf2dc6a97dc08195159df145d7/autotune_configs.json
+(EngineCore pid=121745) 2026-10-02 19:26:20,649 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=121745) 2026-10-02 19:26:22,417 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=121745) 2026-10-02 19:26:22,434 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /home/ak/qwen38-vllm/cache/exl3/flashinfer_autotune_cache/0.6.18.post1/120f/4626d781e42deacc1cc503eac5d09ddeff322caf2dc6a97dc08195159df145d7/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=121745) Capturing CUDA graphs (FULL):   0%|          | 0/3 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  33%|███▎      | 1/3 [00:00<00:00,  5.57it/s]Capturing CUDA graphs (FULL):  67%|██████▋   | 2/3 [00:00<00:00,  6.24it/s]Capturing CUDA graphs (FULL): 100%|██████████| 3/3 [00:00<00:00,  6.73it/s]Capturing CUDA graphs (FULL): 100%|██████████| 3/3 [00:00<00:00,  6.50it/s]
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}

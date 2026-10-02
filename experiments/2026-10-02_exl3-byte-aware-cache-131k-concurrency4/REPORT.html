@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EXL3 byte-aware cache — 131K context, four requests</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #e8e8e8; color: #111; font: 17px/1.55 system-ui, sans-serif; }
+    main { max-width: 1000px; margin: 32px auto; padding: 0 22px 24px; }
+    header, section, footer { background: #fff; border: 3px solid #000; box-shadow: 7px 7px 0 #000; margin-bottom: 26px; padding: 26px; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; margin: 8px 0 20px; }
+    h2 { font-size: 1.45rem; line-height: 1.2; margin: 0 0 16px; }
+    p { margin: 0 0 15px; }
+    p:last-child { margin-bottom: 0; }
+    a { color: #000; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+    a:hover { background: #e5e5e5; }
+    a:focus-visible { outline: 3px solid #000; outline-offset: 4px; }
+    code { font-size: .9em; overflow-wrap: anywhere; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .06em; font-size: .8rem; font-weight: 800; }
+    .lead { font-size: 1.16rem; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+    .stat { background: #eee; border: 3px solid #000; padding: 14px; }
+    .stat strong { display: block; font-size: 1.65rem; line-height: 1.2; }
+    .stat span { display: block; margin-top: 6px; font-size: .86rem; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-variant-numeric: tabular-nums; }
+    caption { text-align: left; font-weight: 700; margin-bottom: 10px; }
+    th, td { border: 2px solid #000; padding: 10px 12px; text-align: left; }
+    thead { background: #111; color: #fff; }
+    tbody th { font-weight: 600; }
+    tbody tr:nth-child(even) { background: #eee; }
+    .number { text-align: right; white-space: nowrap; }
+    .decision { background: #eee; border-left: 6px solid #000; padding: 15px 17px; }
+    footer { font-size: .9rem; }
+    @media (max-width: 620px) { main { margin-top: 18px; padding: 0 14px 20px; } header, section, footer { padding: 18px; } .stats { grid-template-columns: 1fr; } }
+    @media print { body { background: #fff; font-size: 10pt; } main { margin: 0; padding: 0; max-width: none; } header, section, footer { box-shadow: none; margin-bottom: 14px; padding: 16px; } h1 { font-size: 25pt; } h2 { break-after: avoid; } tr, .stat { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">2 October 2026 · Fixed-budget cache experiment</p>
+    <h1>Cache candidates failed the gate.<br>Retain precision-LRU 160.</h1>
+    <p class="lead">All six cache alternatives increased transferred bytes on the selection window. None achieved the required 20% reduction on held-out routing. The baseline completed the requested <strong>131K context at concurrency four, without MTP</strong>. No candidate serving run or deployment change followed.</p>
+    <div class="stats" aria-label="Observed diagnostic baseline">
+      <div class="stat"><strong>4 × 131,072</strong><span>Total tokens per completed request</span></div>
+      <div class="stat"><strong>108.75 tok/s</strong><span>Aggregate steady decode</span></div>
+      <div class="stat"><strong>27.19 tok/s</strong><span>Steady decode per request</span></div>
+    </div>
+  </header>
+
+  <section aria-labelledby="baseline">
+    <h2 id="baseline">The target workload ran successfully</h2>
+    <p>Each of four requests completed <strong>130,560 input tokens plus 512 output tokens = 131,072</strong>. The run used precision-LRU 160, cooperative expert compute, no MTP, an <strong>11,970,048,000-byte expert bank</strong> and <strong>8 GiB FP8 KV</strong>. Prefix caching was disabled; seed was 42 and temperature zero. The four prompts repeated public serving code/documentation with distinct tasks; they are a synthetic workload proxy. <a href="data/prompt-provenance.json">Prompt sources and hashes</a> · <a href="config/run.sh">launcher</a> · <a href="config/trial.py">exact workload</a>.</p>
+    <p>The trace observed <strong>319 actual four-request decode steps</strong>, with one decode row per request and computed contexts between 130,560 and 131,070. The common steady window lasted 11.6968 seconds and yielded 108.75 aggregate tok/s, or 27.19 tok/s per request. Total generation, including all four prefills, took <strong>504.02 seconds</strong>. Average expert traffic was 398.61 MiB per steady step, or 99.65 MiB per output token; the unique-expert hit fraction was 84.42%. <a href="results/baseline-steady.json">Steady timing</a> · <a href="results/summary.json">summary</a> · <a href="results/baseline-outputs.json">outputs</a>.</p>
+    <p>These rates describe <strong>one instrumented diagnostic baseline</strong>, not unprofiled performance or a confidence estimate. Tracing added one small kernel per cached layer and a 7.875 MiB buffer. The first startup failed before generation because callable RPC serialization was rejected. The single permitted correction used named Worker RPC methods; the next run completed successfully. <a href="NOTES.md">Recorded failure and correction</a>.</p>
+  </section>
+
+  <section aria-labelledby="comparison">
+    <h2 id="comparison">Seven configurations, no qualifying candidate</h2>
+    <p>CPU replay exactly matched every observed GPU baseline miss count across <strong>48 layers × 511 recorded decode steps</strong>. The steady four-request trace was split into 159 selection steps and 160 held-out steps. Selection used the first half only; baseline won. Candidate bank sizes stayed at or below the existing budget, retaining global LRU within each precision pool. <a href="results/replay-summary.json">Replay results</a> · <a href="config/replay.py">replay implementation</a>.</p>
+    <div class="table-wrap">
+      <table>
+        <caption>Transferred-byte change relative to baseline: positive means MORE traffic</caption>
+        <thead><tr><th scope="col">Configuration</th><th scope="col" class="number">Selection</th><th scope="col" class="number">Held-out</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Baseline: precision-LRU 160</th><td class="number">0.00%</td><td class="number">0.00%</td></tr>
+          <tr><th scope="row">K3 budget shift −20%</th><td class="number">+31.71%</td><td class="number">+24.40%</td></tr>
+          <tr><th scope="row">K3 budget shift −10%</th><td class="number">+7.27%</td><td class="number">+5.43%</td></tr>
+          <tr><th scope="row">K3 budget shift +10%</th><td class="number">+4.64%</td><td class="number">+2.91%</td></tr>
+          <tr><th scope="row">K3 budget shift +20%</th><td class="number">+29.54%</td><td class="number">+19.52%</td></tr>
+          <tr><th scope="row">Admit after two misses</th><td class="number">+11.07%</td><td class="number">−2.19%</td></tr>
+          <tr><th scope="row">Protect one forward</th><td class="number">+1.70%</td><td class="number">−0.0009%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>K3 shifts move 10% or 20% of the <em>total resident-byte budget</em> toward or away from K3, with K2 receiving the remainder. Every split worsened held-out traffic by 2.91–24.40%. Delayed admission saved 2.19% held-out but cost 11.07% on selection; it cannot be chosen retrospectively from the held-out result. One-forward protection was effectively unchanged held-out.</p>
+    <p class="decision"><strong>Decision: stop at the offline gate.</strong> The preregistered requirement was at least 20% fewer held-out transfer bytes before any live candidate comparison. No candidate qualified, so no full-model candidate, parity trial or deployment change was warranted. Keep precision-LRU 160 and its current admission controls. <a href="README.md">Preregistered gates and stop criteria</a>.</p>
+  </section>
+
+  <footer>
+    <p><strong>Verdict: refuted within the tested fixed-budget candidates.</strong> This does not prove cache allocation can never improve. Candidate results are frozen-routing byte counts, not measured throughput; live routing could change. The workload is synthetic rather than the user’s corpus, and 512 outputs do not establish 32K-output endurance. Larger cache budgets and other optimization families were not tested. <a href="results/baseline-routes.npy">Raw routing trace</a> · <a href="results/baseline-steps.json">scheduled-step record</a> · <a href="config/summarize.py">summary calculation</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
