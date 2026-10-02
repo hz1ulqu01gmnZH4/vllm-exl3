@@ -28,9 +28,9 @@ exec "$QWEN_EXL3_SETUP/.venv/bin/python" "$QWEN_EXL3_SETUP/supervise.py" -- \
   --load-format safetensors --safetensors-load-strategy lazy \
   --kv-cache-dtype fp8_e4m3 \
   --language-model-only \
+  --enable-prefix-caching \
   --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,2,4]}' \
   --max-model-len 131072 --max-num-seqs 4 --max-num-batched-tokens 2048 \
   --gpu-memory-utilization 0.85 --kv-cache-memory-bytes 8589934592 \
-  --no-enable-prefix-caching \
   --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder \
   "$@"
